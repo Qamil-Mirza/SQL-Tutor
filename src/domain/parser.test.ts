@@ -1,0 +1,51 @@
+import { describe, expect, it } from 'vitest'
+import { parseQuery } from './parser'
+
+describe('parseQuery', () => {
+  it('parses select, aliases, where, and limit', () => {
+    const ast = parseQuery("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2")
+    expect(ast.from).toEqual({ tableName: 'users', alias: 'u' })
+    expect(ast.where).toHaveLength(1)
+    expect(ast.limit).toBe(2)
+  })
+
+  it('parses joins and aggregates', () => {
+    const ast = parseQuery(
+      'SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80',
+    )
+    expect(ast.join?.alias).toBe('l')
+    expect(ast.select[1].expression.type).toBe('aggregate')
+    expect(ast.groupBy).toHaveLength(1)
+    expect(ast.having).toHaveLength(1)
+  })
+
+  it('parses wildcard select with an implicit table alias', () => {
+    const ast = parseQuery('SELECT * FROM mentors')
+    expect(ast.from).toEqual({ tableName: 'mentors', alias: 'mentors' })
+    expect(ast.select[0]).toEqual({
+      expression: { type: 'wildcard', label: '*' },
+      alias: undefined,
+      label: '*',
+    })
+  })
+
+  it('parses comma joins in the from clause', () => {
+    const ast = parseQuery('SELECT m1.name, m2.name FROM mentors AS m1, mentors as m2 WHERE m1.name > m2.name')
+    expect(ast.from).toEqual({ tableName: 'mentors', alias: 'm1' })
+    expect(ast.join).toEqual({ tableName: 'mentors', alias: 'm2', syntax: 'comma' })
+    expect(ast.where).toHaveLength(1)
+  })
+
+  it('parses double-quoted string literals in conditions', () => {
+    const ast = parseQuery('SELECT * FROM mentors WHERE editor = "Vim"')
+    expect(ast.where[0].right).toEqual({ type: 'literal', value: 'Vim', label: '"Vim"' })
+  })
+
+  it('requires join aliases', () => {
+    expect(() => parseQuery('SELECT users.name FROM users JOIN listening ON users.id = listening.user_id')).toThrow(/Joined tables must use/)
+  })
+
+  it('rejects unsupported clauses', () => {
+    expect(() => parseQuery('SELECT u.name FROM users AS u ORDER BY u.name')).toThrow(/ORDER BY/)
+  })
+})
