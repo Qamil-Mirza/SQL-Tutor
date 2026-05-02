@@ -42,6 +42,81 @@ describe('executeQuery', () => {
     expect(rows.map((row) => row.values['u.name'])).toEqual(['Ada', 'Ben'])
   })
 
+  it('orders grouped results by an aggregate before applying limit', () => {
+    const musicTables: Table[] = [
+      {
+        name: 'User_Data',
+        columns: ['User_ID', 'Location', 'Minutes', 'Top_Genre', 'Top_Artist'],
+        rows: [
+          { User_ID: 'tiffany123', Location: 'Berkeley', Minutes: 2434, Top_Genre: 'Pop', Top_Artist: 'Olivia Rodrigo' },
+          { User_ID: 'aidan456', Location: 'Oakland', Minutes: 3600, Top_Genre: 'Afrobeats', Top_Artist: 'Burna Boy' },
+          { User_ID: 'colleen789', Location: 'San Jose', Minutes: 3200, Top_Genre: 'Flamenco', Top_Artist: 'ROSALIA' },
+          { User_ID: 'mateo999', Location: 'San Jose', Minutes: 800, Top_Genre: 'Afrobeats', Top_Artist: 'Burna Boy' },
+        ],
+      },
+      {
+        name: 'Survey_Data',
+        columns: ['Name', 'Username', 'Fav_Artist', 'Fav_Song', 'Study'],
+        rows: [
+          { Name: 'Tiffany', Username: 'tiffany123', Fav_Artist: 'Olivia Rodrigo', Fav_Song: 'Vampire', Study: 'No' },
+          { Name: 'Aidan', Username: 'aidan456', Fav_Artist: 'Burna Boy', Fav_Song: 'Last Last', Study: 'No' },
+          { Name: 'Colleen', Username: 'colleen789', Fav_Artist: 'ROSALIA', Fav_Song: 'Despacha', Study: 'Yes' },
+          { Name: 'Mateo', Username: 'mateo999', Fav_Artist: 'Burna Boy', Fav_Song: 'Last Last', Study: 'No' },
+        ],
+      },
+    ]
+
+    const steps = executeQuery(
+      parseQuery("SELECT u.Top_Genre FROM User_Data AS u JOIN Survey_Data AS s ON u.User_ID = s.Username WHERE s.Study = 'No' GROUP BY u.Top_Genre ORDER BY COUNT(*) DESC LIMIT 1"),
+      musicTables,
+    )
+    const rows = steps.at(-1)!.after
+
+    expect(steps.map((step) => step.kind)).toContain('orderBy')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].values['u.Top_Genre']).toBe('Afrobeats')
+  })
+
+  it('projects aggregate arithmetic and orders by its alias', () => {
+    const userData: Table[] = [
+      {
+        name: 'User_Data',
+        columns: ['User_ID', 'Location', 'Minutes', 'Top_Genre', 'Top_Artist'],
+        rows: [
+          { User_ID: 'tiffany123', Location: 'Berkeley', Minutes: 2400, Top_Genre: 'Pop', Top_Artist: 'Olivia Rodrigo' },
+          { User_ID: 'aidan456', Location: 'Oakland', Minutes: 3600, Top_Genre: 'Afrobeats', Top_Artist: 'Burna Boy' },
+          { User_ID: 'colleen789', Location: 'Berkeley', Minutes: 1200, Top_Genre: 'Flamenco', Top_Artist: 'ROSALIA' },
+        ],
+      },
+    ]
+
+    const steps = executeQuery(
+      parseQuery('SELECT Location, AVG(Minutes) / 60.0 AS Avg_Hours FROM User_Data GROUP BY Location ORDER BY Avg_Hours DESC'),
+      userData,
+    )
+    const rows = steps.at(-1)!.after
+
+    expect(rows.map((row) => row.values.Location)).toEqual(['Oakland', 'Berkeley'])
+    expect(rows.map((row) => row.values.Avg_Hours)).toEqual([60, 30])
+  })
+
+  it('treats arithmetic around aggregates as an aggregate query', () => {
+    const userData: Table[] = [
+      {
+        name: 'User_Data',
+        columns: ['Minutes'],
+        rows: [{ Minutes: 120 }, { Minutes: 240 }],
+      },
+    ]
+
+    const steps = executeQuery(parseQuery('SELECT AVG(Minutes) / 60 AS Avg_Hours FROM User_Data'), userData)
+    const rows = steps.at(-1)!.after
+
+    expect(steps.map((step) => step.kind)).toContain('groupBy')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].values.Avg_Hours).toBe(3)
+  })
+
   it('projects every column for wildcard selects', () => {
     const mentors: Table[] = [
       {

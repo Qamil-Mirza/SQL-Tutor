@@ -4,6 +4,7 @@ import type {
   ExecutionStep,
   Expression,
   Group,
+  OrderItem,
   QueryAST,
   Scalar,
   SelectItem,
@@ -122,6 +123,9 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
   }
 
   const beforeSelect = groups ?? rows
+  const projectionContexts = groups
+    ? groups.map((group) => ({ row: group.rows[0], group }))
+    : rows.map((row) => ({ row }))
   rows = projectRows(ast.select, rows, groups)
   steps.push({
     id: 'select',
@@ -133,6 +137,22 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     details: ast.select.map((item) => item.label),
     highlights: [{ kind: 'selected', columnKeys: Object.keys(rows[0]?.values ?? {}) }],
   })
+
+  if (ast.orderBy.length) {
+    const before = rows
+    const sorted = sortRows(rows, projectionContexts, ast.orderBy)
+    rows = sorted.map((item) => item.row)
+    steps.push({
+      id: 'order-by',
+      kind: 'orderBy',
+      title: 'ORDER BY',
+      explanation: 'Sort the projected result rows before LIMIT is applied.',
+      before,
+      after: rows,
+      details: ast.orderBy.map((item) => item.label),
+      highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
+    })
+  }
 
   if (ast.limit !== undefined) {
     const before = rows
@@ -216,6 +236,7 @@ function evaluateExpression(expression: Expression, row: AliasedRow, group?: Gro
   if (expression.type === 'literal') return expression.value
   if (expression.type === 'column') return readColumn(row, expression)
   if (expression.type === 'wildcard') throw new QueryExecutionError('SELECT * can only be used as a projection.')
+  if (expression.type === 'binary') return evaluateBinaryExpression(expression, row, group)
   const rows = group?.rows ?? [row]
   if (expression.fn === 'COUNT') return rows.length
   const values = rows.map((item) => Number(evaluateExpression(expression.column!, item))).filter((value) => !Number.isNaN(value))
@@ -223,6 +244,17 @@ function evaluateExpression(expression: Expression, row: AliasedRow, group?: Gro
   if (expression.fn === 'AVG') return values.reduce((total, value) => total + value, 0) / values.length
   if (expression.fn === 'MIN') return Math.min(...values)
   return Math.max(...values)
+}
+
+function evaluateBinaryExpression(expression: Extract<Expression, { type: 'binary' }>, row: AliasedRow, group?: Group) {
+  const left = Number(evaluateExpression(expression.left, row, group))
+  const right = Number(evaluateExpression(expression.right, row, group))
+  if (Number.isNaN(left) || Number.isNaN(right)) throw new QueryExecutionError(`Arithmetic expression "${expression.label}" must use numeric values.`)
+  if (expression.operator === '+') return left + right
+  if (expression.operator === '-') return left - right
+  if (expression.operator === '*') return left * right
+  if (right === 0) throw new QueryExecutionError(`Arithmetic expression "${expression.label}" divides by zero.`)
+  return left / right
 }
 
 function readColumn(row: AliasedRow, expression: Extract<Expression, { type: 'column' }>) {
@@ -268,12 +300,39 @@ function projectOne(select: SelectItem[], row: AliasedRow, id: string, group?: G
 }
 
 function hasAggregates(select: SelectItem[]) {
-  return select.some((item) => item.expression.type === 'aggregate')
+  return select.some((item) => hasAggregateExpression(item.expression))
+}
+
+function hasAggregateExpression(expression: Expression): boolean {
+  if (expression.type === 'aggregate') return true
+  if (expression.type === 'binary') return hasAggregateExpression(expression.left) || hasAggregateExpression(expression.right)
+  return false
 }
 
 function projectSelectItem(item: SelectItem, row: AliasedRow, group?: Group): [string, Scalar][] {
   if (item.expression.type === 'wildcard') return wildcardEntries(row)
   return [[item.alias ?? item.expression.label, evaluateExpression(item.expression, row, group)]]
+}
+
+function sortRows(rows: AliasedRow[], contexts: Array<{ row: AliasedRow; group?: Group }>, orderBy: OrderItem[]) {
+  return rows
+    .map((row, index) => ({ row, context: contexts[index], index }))
+    .sort((left, right) => {
+      for (const order of orderBy) {
+        const leftValue = evaluateOrderExpression(order.expression, left.row, left.context)
+        const rightValue = evaluateOrderExpression(order.expression, right.row, right.context)
+        const comparison = compareScalars(leftValue, rightValue)
+        if (comparison !== 0) return order.direction === 'DESC' ? -comparison : comparison
+      }
+      return left.index - right.index
+    })
+}
+
+function evaluateOrderExpression(expression: Expression, projectedRow: AliasedRow, context: { row: AliasedRow; group?: Group }) {
+  if (expression.type === 'column' && !expression.tableAlias && expression.column in projectedRow.values) {
+    return projectedRow.values[expression.column]
+  }
+  return evaluateExpression(expression, context.row, context.group)
 }
 
 function wildcardEntries(row: AliasedRow): [string, Scalar][] {

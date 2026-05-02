@@ -1,5 +1,6 @@
 import type {
   AggregateName,
+  ArithmeticOperator,
   ComparisonOperator,
   Condition,
   Expression,
@@ -8,7 +9,7 @@ import type {
 } from './types'
 
 const clausePattern = /\b(FROM|JOIN|ON|WHERE|GROUP BY|HAVING|LIMIT|ORDER BY|DISTINCT|UNION|WITH)\b/gi
-const unsupportedClausePattern = /\b(ORDER BY|DISTINCT|UNION|WITH|OVER|RIGHT JOIN|LEFT JOIN|FULL JOIN|CROSS JOIN)\b/i
+const unsupportedClausePattern = /\b(DISTINCT|UNION|WITH|OVER|RIGHT JOIN|LEFT JOIN|FULL JOIN|CROSS JOIN)\b/i
 const comparisonPattern = /^(.+?)\s*(>=|<=|<>|!=|=|>|<)\s*(.+)$/i
 
 export class QueryParseError extends Error {
@@ -66,6 +67,7 @@ export function parseQuery(input: string): QueryAST {
     where: clauses.WHERE ? parseConditions(textForClause(sql, clauses, 'WHERE')) : [],
     groupBy: clauses['GROUP BY'] ? splitComma(textForClause(sql, clauses, 'GROUP BY')).map(parseExpression) : [],
     having: clauses.HAVING ? parseConditions(textForClause(sql, clauses, 'HAVING')) : [],
+    orderBy: clauses['ORDER BY'] ? splitComma(textForClause(sql, clauses, 'ORDER BY')).map(parseOrderItem) : [],
     limit: parsedLimit,
   }
 }
@@ -116,9 +118,30 @@ function parseSelectItem(text: string): SelectItem {
   return { expression, alias: match[2], label: text.trim() }
 }
 
+function parseOrderItem(text: string) {
+  const trimmed = text.trim()
+  const direction = trimmed.match(/\s+(ASC|DESC)$/i)
+  const expressionText = direction ? trimmed.slice(0, direction.index).trim() : trimmed
+  return {
+    expression: parseExpression(expressionText),
+    direction: (direction?.[1].toUpperCase() ?? 'ASC') as 'ASC' | 'DESC',
+    label: trimmed,
+  }
+}
+
 function parseExpression(text: string): Expression {
   const value = text.trim()
   if (value === '*') return { type: 'wildcard', label: '*' }
+  const binary = splitBinaryExpression(value)
+  if (binary) {
+    return {
+      type: 'binary',
+      operator: binary.operator,
+      left: parseExpression(binary.left),
+      right: parseExpression(binary.right),
+      label: value,
+    }
+  }
   const aggregate = value.match(/^(COUNT|SUM|AVG|MIN|MAX)\((\*|.+)\)$/i)
   if (aggregate) {
     const fn = aggregate[1].toUpperCase() as AggregateName
@@ -130,6 +153,36 @@ function parseExpression(text: string): Expression {
   const column = value.match(/^(?:(\w+)\.)?(\w+)$/)
   if (column) return { type: 'column', tableAlias: column[1], column: column[2], label: value }
   throw new QueryParseError(`Unsupported expression: ${value}.`)
+}
+
+function splitBinaryExpression(value: string): { left: string; operator: ArithmeticOperator; right: string } | undefined {
+  for (const operators of [['+', '-'], ['*', '/']] as const) {
+    let depth = 0
+    let quote: string | undefined
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+      const char = value[index]
+      if (quote) {
+        if (char === quote) quote = undefined
+        continue
+      }
+      if (char === '"' || char === "'") {
+        quote = char
+        continue
+      }
+      if (char === ')') depth += 1
+      if (char === '(') depth -= 1
+      if (depth === 0 && (operators as readonly string[]).includes(char)) {
+        if ((char === '+' || char === '-') && isUnarySign(value, index)) continue
+        const left = value.slice(0, index).trim()
+        const right = value.slice(index + 1).trim()
+        if (left && right) return { left, operator: char as ArithmeticOperator, right }
+      }
+    }
+  }
+}
+
+function isUnarySign(value: string, index: number) {
+  return index === 0 || /[+\-*/(]\s*$/.test(value.slice(0, index))
 }
 
 function splitComma(text: string) {

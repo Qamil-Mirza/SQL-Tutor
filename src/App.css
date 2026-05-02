@@ -463,17 +463,6 @@ tr:last-child td {
   font-weight: 850;
 }
 
-.editable-table {
-  margin-top: 14px;
-}
-
-.table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
 .empty {
   border: 1px dashed var(--line-strong);
   border-radius: 10px;

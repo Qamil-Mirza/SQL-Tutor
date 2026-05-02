@@ -36,14 +36,13 @@ describe('App', () => {
   it('shows friendly errors', async () => {
     render(<App />)
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT name FROM users ORDER BY name')
+    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT DISTINCT name FROM users')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('ORDER BY is not supported')
+    expect(screen.getByRole('alert')).toHaveTextContent('DISTINCT is not supported')
   })
 
   it('runs a query against user-defined table SQL', async () => {
     render(<App />)
-    await userEvent.selectOptions(screen.getByLabelText('Table creation method'), 'sql')
     await userEvent.clear(screen.getByLabelText('Table SQL'))
     await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
     await userEvent.click(screen.getByRole('button', { name: 'Apply Table SQL' }))
@@ -56,7 +55,6 @@ describe('App', () => {
 
   it('runs a wildcard query against user-defined table SQL without a table alias', async () => {
     render(<App />)
-    await userEvent.selectOptions(screen.getByLabelText('Table creation method'), 'sql')
     await userEvent.clear(screen.getByLabelText('Table SQL'))
     await userEvent.type(
       screen.getByLabelText('Table SQL'),
@@ -71,24 +69,25 @@ describe('App', () => {
     expect(screen.getAllByText('Notepad++').length).toBeGreaterThan(0)
   })
 
-  it('updates table data through the direct editor', async () => {
+  it('does not run the query when applying table SQL', async () => {
     render(<App />)
-    expect(screen.getByLabelText('Table creation method')).toHaveValue('grid')
-    await userEvent.clear(screen.getByLabelText('users name row 1'))
-    await userEvent.type(screen.getByLabelText('users name row 1'), 'Grace')
+    expect(screen.getAllByText('Ada').length).toBeGreaterThan(0)
+
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE users (id, name, tier, region);{enter}INSERT INTO users VALUES (1, 'Grace', 'pro', 'west');")
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Table SQL' }))
+    expect(screen.queryByText('Grace')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Ada').length).toBeGreaterThan(0)
+
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
     expect(screen.getAllByText('Grace').length).toBeGreaterThan(0)
   })
 
-  it('switches between table creation methods', async () => {
+  it('uses Table SQL as the only table creation method', () => {
     render(<App />)
-    expect(screen.getByLabelText('users name row 1')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Table SQL')).not.toBeInTheDocument()
-
-    await userEvent.selectOptions(screen.getByLabelText('Table creation method'), 'sql')
     expect(screen.getByLabelText('Table SQL')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Table creation method')).not.toBeInTheDocument()
+    expect(screen.queryByText('Fill in a table')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('users name row 1')).not.toBeInTheDocument()
   })
 })

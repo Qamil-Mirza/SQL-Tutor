@@ -4,12 +4,11 @@ import { executeQuery } from './domain/engine'
 import { parseQuery } from './domain/parser'
 import { initialTables, starterQuery } from './domain/samples'
 import { parseTableSql, serializeTables } from './domain/tableSql'
-import type { AliasedRow, ExecutionStep, Group, Row, Scalar, Table } from './domain/types'
+import type { AliasedRow, ExecutionStep, Group, Table } from './domain/types'
 
 function App() {
   const [tables, setTables] = useState<Table[]>(initialTables)
   const [tableSql, setTableSql] = useState(() => serializeTables(initialTables))
-  const [selectedTableName, setSelectedTableName] = useState(initialTables[0].name)
   const [sql, setSql] = useState(starterQuery)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState<string>()
@@ -29,18 +28,10 @@ function App() {
     try {
       const nextTables = parseTableSql(tableSql)
       setTables(nextTables)
-      setSelectedTableName(nextTables[0]?.name ?? '')
       setTableError(undefined)
-      handleRun(sql, nextTables)
     } catch (error) {
       setTableError(error instanceof Error ? error.message : 'The table SQL could not be applied.')
     }
-  }
-
-  function handleTablesChange(nextTables: Table[]) {
-    setTables(nextTables)
-    setTableSql(serializeTables(nextTables))
-    handleRun(sql, nextTables)
   }
 
   return (
@@ -64,14 +55,10 @@ function App() {
           </div>
 
           <TableBuilder
-            tables={tables}
             tableSql={tableSql}
-            selectedTableName={selectedTableName}
             tableError={tableError}
             onTableSqlChange={setTableSql}
             onApplyTableSql={handleApplyTableSql}
-            onSelectedTableChange={setSelectedTableName}
-            onTablesChange={handleTablesChange}
           />
 
           <QueryEditor
@@ -261,27 +248,16 @@ function GroupedTableView({ groups }: { groups: Group[] }) {
 }
 
 function TableBuilder({
-  tables,
   tableSql,
-  selectedTableName,
   tableError,
   onTableSqlChange,
   onApplyTableSql,
-  onSelectedTableChange,
-  onTablesChange,
 }: {
-  tables: Table[]
   tableSql: string
-  selectedTableName: string
   tableError?: string
   onTableSqlChange: (value: string) => void
   onApplyTableSql: () => void
-  onSelectedTableChange: (value: string) => void
-  onTablesChange: (tables: Table[]) => void
 }) {
-  const selectedTable = tables.find((table) => table.name === selectedTableName) ?? tables[0]
-  const [creationMode, setCreationMode] = useState<'sql' | 'grid'>('grid')
-
   return (
     <section className="table-builder" aria-label="Create table">
       <div className="section-heading-row">
@@ -290,125 +266,24 @@ function TableBuilder({
           <h2>Create table</h2>
         </div>
       </div>
-      <label className="field-label" htmlFor="table-creation-method">
-        Table creation method
-      </label>
-      <select
-        id="table-creation-method"
-        value={creationMode}
-        onChange={(event) => setCreationMode(event.target.value as 'sql' | 'grid')}
-      >
-        <option value="grid">Fill in a table</option>
-        <option value="sql">Write table SQL</option>
-      </select>
-
-      {creationMode === 'sql' ? (
-        <div className="table-mode-panel">
-          <label className="field-label" htmlFor="table-sql">
-            Table SQL
-          </label>
-          <textarea
-            className="table-sql-editor"
-            id="table-sql"
-            value={tableSql}
-            onChange={(event) => onTableSqlChange(event.target.value)}
-            spellCheck={false}
-          />
-          <button className="secondary-button" type="button" onClick={onApplyTableSql}>
-            Apply Table SQL
-          </button>
-          {tableError ? <div className="error-box" role="alert">{tableError}</div> : null}
-        </div>
-      ) : selectedTable ? (
-        <>
-          <label className="field-label" htmlFor="table-select">
-            Table to edit
-          </label>
-          <select id="table-select" value={selectedTable.name} onChange={(event) => onSelectedTableChange(event.target.value)}>
-            {tables.map((table) => (
-              <option key={table.name} value={table.name}>
-                {table.name}
-              </option>
-            ))}
-          </select>
-          <EditableTable table={selectedTable} onChange={(nextTable) => {
-            onTablesChange(tables.map((table) => (table.name === nextTable.name ? nextTable : table)))
-          }} />
-        </>
-      ) : (
-        <p className="empty">Switch to table SQL to create a table, then fill it in here.</p>
-      )}
+      <div className="table-mode-panel">
+        <label className="field-label" htmlFor="table-sql">
+          Table SQL
+        </label>
+        <textarea
+          className="table-sql-editor"
+          id="table-sql"
+          value={tableSql}
+          onChange={(event) => onTableSqlChange(event.target.value)}
+          spellCheck={false}
+        />
+        <button className="secondary-button" type="button" onClick={onApplyTableSql}>
+          Apply Table SQL
+        </button>
+        {tableError ? <div className="error-box" role="alert">{tableError}</div> : null}
+      </div>
     </section>
   )
-}
-
-function EditableTable({ table, onChange }: { table: Table; onChange: (table: Table) => void }) {
-  function updateCell(rowIndex: number, column: string, value: string) {
-    const rows = table.rows.map((row, index) => (
-      index === rowIndex ? { ...row, [column]: coerceCell(value) } : row
-    ))
-    onChange({ ...table, rows })
-  }
-
-  function addRow() {
-    onChange({ ...table, rows: [...table.rows, Object.fromEntries(table.columns.map((column) => [column, ''])) as Row] })
-  }
-
-  function addColumn() {
-    const column = uniqueColumnName(table.columns)
-    onChange({
-      ...table,
-      columns: [...table.columns, column],
-      rows: table.rows.map((row) => ({ ...row, [column]: '' })),
-    })
-  }
-
-  return (
-    <div className="editable-table">
-      <div className="table-actions">
-        <button type="button" onClick={addRow}>Add row</button>
-        <button type="button" onClick={addColumn}>Add column</button>
-      </div>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              {table.columns.map((column) => (
-                <th key={column}>{column}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {table.columns.map((column) => (
-                  <td key={column}>
-                    <input
-                      aria-label={`${table.name} ${column} row ${rowIndex + 1}`}
-                      value={String(row[column] ?? '')}
-                      onChange={(event) => updateCell(rowIndex, column, event.target.value)}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function coerceCell(value: string): Scalar {
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value)
-  if (/^null$/i.test(value)) return null
-  return value
-}
-
-function uniqueColumnName(columns: string[]) {
-  let index = columns.length + 1
-  while (columns.includes(`column_${index}`)) index += 1
-  return `column_${index}`
 }
 
 function EmptyState() {

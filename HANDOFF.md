@@ -7,26 +7,28 @@ Build an educational SQL logical execution visualizer for CSM C88C. The design p
 ## Supported SQL Subset
 
 - `SELECT` columns, `SELECT *`, and aggregate expressions: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`
+- Arithmetic expressions with `+`, `-`, `*`, and `/`
 - Required `FROM table`, with optional `AS alias`
 - Optional single inner `JOIN table AS alias ON condition` or comma join `FROM table AS alias, table AS alias`
 - Optional `WHERE` with simple comparisons joined by `AND`
 - Optional `GROUP BY`
 - Optional `HAVING`
+- Optional `ORDER BY` with `ASC` or `DESC`
 - Optional `LIMIT`
 - Qualified and unqualified columns, single- or double-quoted string literals, number literals, null literals, and comparison operators `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=`
 - Numeric comparisons for numeric values and lexicographic comparisons for non-numeric values
 
-Aliases are optional for `FROM`; when omitted, the table name is used as the alias. Aliases are required for `JOIN`. Explicit non-goals are full SQL compatibility, optimizer visualization, subqueries, CTEs, outer joins, `ORDER BY`, `DISTINCT`, `UNION`, window functions, and nested joins.
+Aliases are optional for `FROM`; when omitted, the table name is used as the alias. Aliases are required for `JOIN`. Explicit non-goals are full SQL compatibility, optimizer visualization, subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, and nested joins.
 
 ## Architecture Overview
 
 Parser responsibilities live in `src/domain/parser.ts`. The parser normalizes whitespace, rejects unsupported clauses early, accepts `FROM table` or `FROM table AS alias`, accepts one comma-joined source in `FROM`, requires explicit aliases for joined sources, and builds a `QueryAST` from the supported subset.
 
-Execution engine responsibilities live in `src/domain/engine.ts`. The engine evaluates the AST against in-memory tables in logical order: `FROM`, `JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `SELECT`, `LIMIT`, `Result`. It preserves stable row provenance through aliasing, joins, grouping, filtering, projection, and limiting.
+Execution engine responsibilities live in `src/domain/engine.ts`. The engine evaluates the AST against in-memory tables in logical order: `FROM`, `JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `SELECT`, `ORDER BY`, `LIMIT`, `Result`. It preserves stable row provenance through aliasing, joins, grouping, filtering, sorting, projection, and limiting.
 
-Visualization and component responsibilities live in `src/App.tsx` and `src/App.css`. The UI uses a focused split workspace: a top app bar with CSM C88C branding and starter-query status, a compact left Build pane for table creation/editing and query iteration, and a larger right Trace pane for step navigation and execution visualization. Table creation uses a dropdown to choose either the direct grid editor or Table SQL. The theme is a warm classroom-neutral palette with teal primary actions, restrained borders, a dark SQL editor surface, and table views optimized for horizontal inspection.
+Visualization and component responsibilities live in `src/App.tsx` and `src/App.css`. The UI uses a focused split workspace: a top app bar with CSM C88C branding and starter-query status, a compact left Build pane for Table SQL definitions and query iteration, and a larger right Trace pane for step navigation and execution visualization. The theme is a warm classroom-neutral palette with teal primary actions, restrained borders, a dark SQL editor surface, and table views optimized for horizontal inspection.
 
-Starter data and starter query ownership live in `src/domain/samples.ts`. Keep starter tables small enough to inspect manually, but do not present them as a fixed sample-table viewer or require a demo-query dropdown. Users can define their own tables through the selected Table SQL mode or by choosing the direct grid editor mode.
+Starter data and starter query ownership live in `src/domain/samples.ts`. Keep starter tables small enough to inspect manually, but do not present them as a fixed sample-table viewer or require a demo-query dropdown. Users can define their own tables through Table SQL.
 
 Table SQL helpers live in `src/domain/tableSql.ts`. They parse and serialize the small table-definition subset: `CREATE TABLE name (columns...)` and `INSERT INTO name VALUES (...)`.
 
@@ -72,7 +74,7 @@ The current CSS implements teal active-step and alias badges, red/faded removed 
 
 - No full SQL engine.
 - No optimizer visualization.
-- No subqueries, CTEs, outer joins, `ORDER BY`, `DISTINCT`, `UNION`, window functions, or nested joins.
+- No subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, or nested joins.
 - Parser is regex/token-assisted and intentionally scoped.
 - Aggregate evaluation is designed for education on small in-memory table data.
 

@@ -22,11 +22,13 @@ export type AliasedRow = {
 export type JoinedRow = AliasedRow
 
 export type AggregateName = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'
+export type ArithmeticOperator = '+' | '-' | '*' | '/'
 
 export type Expression =
   | { type: 'column'; tableAlias?: string; column: string; label: string }
   | { type: 'literal'; value: Scalar; label: string }
   | { type: 'aggregate'; fn: AggregateName; column?: Expression; label: string }
+  | { type: 'binary'; operator: ArithmeticOperator; left: Expression; right: Expression; label: string }
   | { type: 'wildcard'; label: '*' }
 
 export type ComparisonOperator = '=' | '!=' | '<>' | '>' | '<' | '>=' | '<='
@@ -44,6 +46,12 @@ export type SelectItem = {
   label: string
 }
 
+export type OrderItem = {
+  expression: Expression
+  direction: 'ASC' | 'DESC'
+  label: string
+}
+
 export type JoinClause = {
   tableName: string
   alias: string
@@ -58,6 +66,7 @@ export type QueryAST = {
   where: Condition[]
   groupBy: Expression[]
   having: Condition[]
+  orderBy: OrderItem[]
   limit?: number
 }
 
@@ -82,6 +91,7 @@ export type StepKind =
   | 'groupBy'
   | 'having'
   | 'select'
+  | 'orderBy'
   | 'limit'
   | 'result'
 

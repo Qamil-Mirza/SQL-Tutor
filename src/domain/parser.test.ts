@@ -19,6 +19,29 @@ describe('parseQuery', () => {
     expect(ast.having).toHaveLength(1)
   })
 
+  it('parses order by expressions and directions', () => {
+    const ast = parseQuery('SELECT u.tier FROM users AS u GROUP BY u.tier ORDER BY COUNT(*) DESC, u.tier ASC LIMIT 1')
+    expect(ast.orderBy).toEqual([
+      { expression: { type: 'aggregate', fn: 'COUNT', column: undefined, label: 'COUNT(*)' }, direction: 'DESC', label: 'COUNT(*) DESC' },
+      { expression: { type: 'column', tableAlias: 'u', column: 'tier', label: 'u.tier' }, direction: 'ASC', label: 'u.tier ASC' },
+    ])
+  })
+
+  it('parses arithmetic expressions around aggregates', () => {
+    const ast = parseQuery('SELECT Location, AVG(Minutes) / 60.0 AS Avg_Hours FROM User_Data GROUP BY Location ORDER BY Avg_Hours DESC')
+    expect(ast.select[1]).toEqual({
+      expression: {
+        type: 'binary',
+        operator: '/',
+        left: { type: 'aggregate', fn: 'AVG', column: { type: 'column', tableAlias: undefined, column: 'Minutes', label: 'Minutes' }, label: 'AVG(Minutes)' },
+        right: { type: 'literal', value: 60, label: '60.0' },
+        label: 'AVG(Minutes) / 60.0',
+      },
+      alias: 'Avg_Hours',
+      label: 'AVG(Minutes) / 60.0 AS Avg_Hours',
+    })
+  })
+
   it('parses wildcard select with an implicit table alias', () => {
     const ast = parseQuery('SELECT * FROM mentors')
     expect(ast.from).toEqual({ tableName: 'mentors', alias: 'mentors' })
@@ -46,6 +69,6 @@ describe('parseQuery', () => {
   })
 
   it('rejects unsupported clauses', () => {
-    expect(() => parseQuery('SELECT u.name FROM users AS u ORDER BY u.name')).toThrow(/ORDER BY/)
+    expect(() => parseQuery('SELECT DISTINCT u.name FROM users AS u')).toThrow(/DISTINCT/)
   })
 })
