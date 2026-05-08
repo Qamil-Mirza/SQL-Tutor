@@ -75,6 +75,15 @@ export type Group = {
   key: string
   rows: AliasedRow[]
   values: Record<string, Scalar>
+  aggregates?: Array<{ label: string; value: Scalar }>
+  conditions?: Array<{ label: string; result: boolean }>
+}
+
+export type SortSummary = {
+  rowId: string
+  beforeRank: number
+  afterRank: number
+  keys: Array<{ label: string; value: Scalar; direction: 'ASC' | 'DESC' }>
 }
 
 export type Highlight = {
@@ -104,4 +113,5 @@ export type ExecutionStep = {
   after: AliasedRow[] | Group[]
   details?: string[]
   highlights: Highlight[]
+  sortSummaries?: SortSummary[]
 }

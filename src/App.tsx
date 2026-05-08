@@ -1,20 +1,48 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import './App.css'
 import { executeQuery } from './domain/engine'
 import { parseQuery } from './domain/parser'
 import { initialTables, starterQuery } from './domain/samples'
 import { parseTableSql, serializeTables } from './domain/tableSql'
-import type { AliasedRow, ExecutionStep, Group, Table } from './domain/types'
+import type { AliasedRow, ExecutionStep, Group, Highlight, Scalar, Table } from './domain/types'
+
+const workspaceStorageKey = 'c88c-sql-tutor-workspace'
+const previewPageSize = 5
+
+type WorkspaceSnapshot = {
+  tables: Table[]
+  tableSql: string
+  sql: string
+}
 
 function App() {
-  const [tables, setTables] = useState<Table[]>(initialTables)
-  const [tableSql, setTableSql] = useState(() => serializeTables(initialTables))
-  const [sql, setSql] = useState(starterQuery)
+  const savedWorkspace = useMemo(() => loadWorkspace(), [])
+  const [path, setPath] = useState(() => (window.location.pathname === '/visualization' ? '/visualization' : '/'))
+  const [tables, setTables] = useState<Table[]>(savedWorkspace.tables)
+  const [tableSql, setTableSql] = useState(savedWorkspace.tableSql)
+  const [sql, setSql] = useState(savedWorkspace.sql)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState<string>()
   const [tableError, setTableError] = useState<string>()
-  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(starterQuery, initialTables).steps)
+  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(savedWorkspace.sql, savedWorkspace.tables).steps)
   const activeStep = steps[stepIndex]
+
+  useEffect(() => {
+    window.localStorage.setItem(workspaceStorageKey, JSON.stringify({ tables, tableSql, sql }))
+  }, [tables, tableSql, sql])
+
+  useEffect(() => {
+    function handlePopState() {
+      setPath(window.location.pathname === '/visualization' ? '/visualization' : '/')
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  function navigate(nextPath: '/' | '/visualization') {
+    window.history.pushState({}, '', nextPath)
+    setPath(nextPath)
+  }
 
   function handleRun(nextSql = sql, nextTables = tables) {
     const result = run(nextSql, nextTables)
@@ -22,6 +50,7 @@ function App() {
     setError(result.error)
     setSteps(result.steps)
     setStepIndex(0)
+    if (!result.error) navigate('/visualization')
   }
 
   function handleApplyTableSql() {
@@ -34,48 +63,19 @@ function App() {
     }
   }
 
-  return (
-    <main className="app-shell">
-      <header className="app-topbar">
-        <div className="brand-lockup" aria-label="CSM C88C SQL Visualizer">
-          <span className="brand-mark" aria-hidden="true">SQL</span>
-          <div>
-            <p className="brand-title">CSM C88C SQL Visualizer</p>
-            <p className="brand-subtitle">Logical execution tutor</p>
-          </div>
-        </div>
-      </header>
-
-      <div className="workspace-grid">
-        <section className="build-pane" aria-label="Build workspace">
-          <div className="pane-heading">
-            <p className="eyebrow">Build</p>
-            <h1>Tables and query</h1>
-            <p className="pane-copy">Edit the input data, adjust the SQL, then run again without leaving the workspace.</p>
-          </div>
-
-          <TableBuilder
-            tableSql={tableSql}
-            tableError={tableError}
-            onTableSqlChange={setTableSql}
-            onApplyTableSql={handleApplyTableSql}
-          />
-
-          <QueryEditor
-            sql={sql}
-            error={error}
-            onSqlChange={setSql}
-            onRun={() => handleRun()}
-          />
-        </section>
-
-        <section className="trace-pane" aria-labelledby="trace-heading">
+  if (path === '/visualization') {
+    return (
+      <AppShell>
+        <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
           <div className="trace-card trace-nav-card">
             <div>
               <p className="eyebrow">Trace</p>
-              <h2 id="trace-heading">Trace</h2>
+              <h1 id="trace-heading">Trace</h1>
               <p className="pane-copy">Walk through each logical SQL operation and compare what changed.</p>
             </div>
+            <button className="secondary-button back-button" type="button" onClick={() => navigate('/')}>
+              Back to editor
+            </button>
             <StepNavigator
               steps={steps}
               stepIndex={stepIndex}
@@ -88,9 +88,75 @@ function App() {
             {activeStep ? <VisualizationPanel step={activeStep} /> : <EmptyState />}
           </section>
         </section>
+      </AppShell>
+    )
+  }
+
+  return (
+    <AppShell>
+      <div className="authoring-grid">
+        <section className="build-pane" aria-label="Build workspace">
+          <div className="pane-heading">
+            <p className="eyebrow">Build</p>
+            <h1>Tables and query</h1>
+            <p className="pane-copy">Create tables, inspect the data, write SQL, then open a focused visualization.</p>
+          </div>
+
+          <div className="authoring-pane-grid">
+            <div className="authoring-pane" aria-label="Table creation pane">
+              <TableBuilder
+                tables={tables}
+                tableSql={tableSql}
+                tableError={tableError}
+                onTableSqlChange={setTableSql}
+                onApplyTableSql={handleApplyTableSql}
+              />
+            </div>
+
+            <div className="authoring-pane" aria-label="Query pane">
+              <QueryEditor
+                sql={sql}
+                error={error}
+                onSqlChange={setSql}
+                onRun={() => handleRun()}
+              />
+            </div>
+          </div>
+        </section>
       </div>
+    </AppShell>
+  )
+}
+
+function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <main className="app-shell">
+      <header className="app-topbar">
+        <div className="brand-lockup" aria-label="CSM C88C SQL Visualizer">
+          <span className="brand-mark" aria-hidden="true">SQL</span>
+          <div>
+            <p className="brand-title">CSM C88C SQL Visualizer</p>
+            <p className="brand-subtitle">Logical execution tutor</p>
+          </div>
+        </div>
+      </header>
+      {children}
     </main>
   )
+}
+
+function loadWorkspace(): WorkspaceSnapshot {
+  try {
+    const raw = window.localStorage.getItem(workspaceStorageKey)
+    if (!raw) throw new Error('No saved workspace')
+    const parsed = JSON.parse(raw) as Partial<WorkspaceSnapshot>
+    if (!Array.isArray(parsed.tables) || typeof parsed.tableSql !== 'string' || typeof parsed.sql !== 'string') {
+      throw new Error('Invalid saved workspace')
+    }
+    return { tables: parsed.tables, tableSql: parsed.tableSql, sql: parsed.sql }
+  } catch {
+    return { tables: initialTables, tableSql: serializeTables(initialTables), sql: starterQuery }
+  }
 }
 
 function run(sql: string, tables: Table[]) {
@@ -154,6 +220,7 @@ function QueryEditor({
   onSqlChange: (value: string) => void
   onRun: () => void
 }) {
+  const editorRows = rowsForQuery(sql)
   return (
     <section className="query-card" aria-label="SQL query">
       <p className="eyebrow">SQL query</p>
@@ -161,18 +228,27 @@ function QueryEditor({
       <label className="field-label" htmlFor="sql-editor">
         SQL query editor
       </label>
-      <textarea
-        id="sql-editor"
-        value={sql}
-        onChange={(event) => onSqlChange(event.target.value)}
-        spellCheck={false}
-      />
+      <div className="sql-editor-shell">
+        <pre className="sql-highlight" aria-hidden="true">{highlightSql(sql)}</pre>
+        <textarea
+          id="sql-editor"
+          rows={editorRows}
+          value={sql}
+          onChange={(event) => onSqlChange(event.target.value)}
+          spellCheck={false}
+        />
+      </div>
       <button className="primary-button" type="button" onClick={onRun}>
         Run Query
       </button>
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
+}
+
+function rowsForQuery(sql: string) {
+  const visualRows = sql.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 72)), 0)
+  return Math.min(18, Math.max(6, visualRows + 1))
 }
 
 function VisualizationPanel({ step }: { step: ExecutionStep }) {
@@ -188,26 +264,49 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
           ))}
         </ul>
       ) : null}
+      {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
       {step.before ? (
         <>
           <h3>Before</h3>
-          <DataView data={step.before} />
+          <DataView data={step.before} highlights={step.highlights} />
         </>
       ) : null}
       <h3>After</h3>
-      <DataView data={step.after} />
+      <DataView data={step.after} highlights={step.highlights} />
     </article>
   )
 }
 
-function DataView({ data }: { data: AliasedRow[] | Group[] }) {
-  if (!data.length) return <p className="empty">No rows remain.</p>
-  if ('rows' in data[0]) return <GroupedTableView groups={data as Group[]} />
-  return <TableView rows={data as AliasedRow[]} />
+function SortSummaryPanel({ summaries }: { summaries: NonNullable<ExecutionStep['sortSummaries']> }) {
+  return (
+    <div className="sort-summary-panel" aria-label="ORDER BY sort keys">
+      {summaries.map((summary) => (
+        <div className="sort-summary-row" key={summary.rowId}>
+          <span className="rank-chip">{summary.beforeRank} -&gt; {summary.afterRank}</span>
+          <span className="alias-badge">{summary.rowId}</span>
+          <div className="sort-key-list">
+            {summary.keys.map((key) => (
+              <span className="sort-key-chip" key={`${summary.rowId}-${key.label}`}>
+                {key.label} {key.direction} = {formatCell(key.value)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-function TableView({ rows }: { rows: AliasedRow[] }) {
+function DataView({ data, highlights = [] }: { data: AliasedRow[] | Group[]; highlights?: Highlight[] }) {
+  if (!data.length) return <p className="empty">No rows remain.</p>
+  if ('rows' in data[0]) return <GroupedTableView groups={data as Group[]} highlights={highlights} />
+  return <TableView rows={data as AliasedRow[]} highlights={highlights} />
+}
+
+function TableView({ rows, highlights = [] }: { rows: AliasedRow[]; highlights?: Highlight[] }) {
   const columns = useMemo(() => [...new Set(rows.flatMap((row) => Object.keys(row.values)))], [rows])
+  const removedRows = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.rowIds ?? [])), [highlights])
+  const selectedColumns = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'selected').flatMap((highlight) => highlight.columnKeys ?? [])), [highlights])
   return (
     <div className="table-scroll">
       <table>
@@ -215,16 +314,16 @@ function TableView({ rows }: { rows: AliasedRow[] }) {
           <tr>
             <th>row</th>
             {columns.map((column) => (
-              <th key={column}>{column}</th>
+              <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id} className={row.id.includes('__removed') ? 'removed-row' : ''}>
+            <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
               <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
               {columns.map((column) => (
-                <td key={column}>{String(row.values[column] ?? '')}</td>
+                <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
               ))}
             </tr>
           ))}
@@ -234,13 +333,30 @@ function TableView({ rows }: { rows: AliasedRow[] }) {
   )
 }
 
-function GroupedTableView({ groups }: { groups: Group[] }) {
+function GroupedTableView({ groups, highlights = [] }: { groups: Group[]; highlights?: Highlight[] }) {
+  const removedGroups = new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.groupIds ?? []))
   return (
     <div className="group-grid">
       {groups.map((group) => (
-        <div className="group-bucket" key={group.id}>
+        <div className={removedGroups.has(group.id) ? 'group-bucket removed-group' : 'group-bucket'} key={group.id} aria-label={`Group ${group.key}`}>
           <div className="group-title">{group.key}</div>
-          <TableView rows={group.rows} />
+          {group.aggregates?.length ? (
+            <div className="aggregate-chip-list" aria-label={`Aggregate values for ${group.key}`}>
+              {group.aggregates.map((aggregate) => (
+                <span className="aggregate-chip" key={aggregate.label}>{aggregate.label} = {formatCell(aggregate.value)}</span>
+              ))}
+            </div>
+          ) : null}
+          {group.conditions?.length ? (
+            <div className="condition-chip-list" aria-label={`HAVING checks for ${group.key}`}>
+              {group.conditions.map((condition) => (
+                <span className={condition.result ? 'condition-chip kept-condition' : 'condition-chip removed-condition'} key={condition.label}>
+                  {condition.label} -&gt; {String(condition.result)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <TableView rows={group.rows} highlights={highlights} />
         </div>
       ))}
     </div>
@@ -248,11 +364,13 @@ function GroupedTableView({ groups }: { groups: Group[] }) {
 }
 
 function TableBuilder({
+  tables,
   tableSql,
   tableError,
   onTableSqlChange,
   onApplyTableSql,
 }: {
+  tables: Table[]
   tableSql: string
   tableError?: string
   onTableSqlChange: (value: string) => void
@@ -278,12 +396,98 @@ function TableBuilder({
           spellCheck={false}
         />
         <button className="secondary-button" type="button" onClick={onApplyTableSql}>
-          Apply Table SQL
+          Create Tables
         </button>
         {tableError ? <div className="error-box" role="alert">{tableError}</div> : null}
       </div>
+      <div className="table-preview-list" aria-label="Created table previews">
+        {tables.map((table) => <TablePreview table={table} key={table.name} />)}
+      </div>
     </section>
   )
+}
+
+function TablePreview({ table }: { table: Table }) {
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(table.rows.length / previewPageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * previewPageSize
+  const visibleRows = table.rows.slice(pageStart, pageStart + previewPageSize)
+  const rangeStart = table.rows.length ? pageStart + 1 : 0
+  const rangeEnd = Math.min(table.rows.length, pageStart + visibleRows.length)
+
+  return (
+    <section className="table-preview table-overflow-boundary" aria-label={`${table.name} preview`}>
+      <div className="preview-header">
+        <div>
+          <p className="eyebrow">Preview</p>
+          <h3>{table.name}</h3>
+        </div>
+        <p className="preview-count">Rows {rangeStart}-{rangeEnd} of {table.rows.length}</p>
+      </div>
+      <RawTableView columns={table.columns} rows={visibleRows} />
+      <div className="pagination-controls">
+        <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0} aria-label={`Previous page for ${table.name}`}>
+          Previous
+        </button>
+        <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={currentPage >= pageCount - 1} aria-label={`Next page for ${table.name}`}>
+          Next
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function RawTableView({ columns, rows }: { columns: string[]; rows: Record<string, Scalar>[] }) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column) => <th key={column}>{column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function isRemovedRow(rowId: string, removedRows: Set<string>) {
+  const cleanId = rowId.replace('__removed', '')
+  return rowId.includes('__removed') || removedRows.has(cleanId) || removedRows.has(rowId)
+}
+
+function isSelectedColumn(column: string, selectedColumns: Set<string>) {
+  const unqualified = column.split('.').at(-1) ?? column
+  return selectedColumns.has(column) || selectedColumns.has(unqualified)
+}
+
+function formatCell(value: Scalar | undefined) {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+function highlightSql(sql: string) {
+  const parts = sql.split(/(\bGROUP\s+BY\b|\bORDER\s+BY\b|\bSELECT\b|\bFROM\b|\bWHERE\b|\bJOIN\b|\bHAVING\b|\bLIMIT\b|\bAS\b|\bON\b|\bAND\b)/gi)
+  return parts.map((part, index) => {
+    const normalized = part.toUpperCase().replace(/\s+/g, ' ')
+    const className = keywordClassName(normalized)
+    return className ? <span className={className} key={index}>{part}</span> : <span key={index}>{part}</span>
+  })
+}
+
+function keywordClassName(keyword: string) {
+  if (keyword === 'SELECT') return 'sql-keyword sql-keyword-select'
+  if (keyword === 'WHERE' || keyword === 'HAVING') return 'sql-keyword sql-keyword-filter'
+  if (keyword === 'FROM' || keyword === 'JOIN' || keyword === 'ON') return 'sql-keyword sql-keyword-source'
+  if (keyword === 'GROUP BY' || keyword === 'ORDER BY' || keyword === 'LIMIT') return 'sql-keyword sql-keyword-shape'
+  if (keyword === 'AS' || keyword === 'AND') return 'sql-keyword sql-keyword-logic'
 }
 
 function EmptyState() {

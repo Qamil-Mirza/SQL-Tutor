@@ -8,6 +8,7 @@ import type {
   QueryAST,
   Scalar,
   SelectItem,
+  SortSummary,
   Table,
 } from './types'
 
@@ -63,7 +64,10 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       before,
       after: rows,
       details,
-      highlights: [{ kind: 'matched', rowIds: rows.map((row) => row.id) }],
+      highlights: [
+        { kind: 'matched', rowIds: rows.map((row) => row.id) },
+        { kind: 'selected', columnKeys: rightTable.columns.map((column) => `${ast.join!.alias}.${column}`) },
+      ],
     })
   }
 
@@ -90,6 +94,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
   let groups: Group[] | undefined
   if (ast.groupBy.length || hasAggregates(ast.select) || ast.having.length) {
     groups = groupRows(rows, ast.groupBy)
+    groups = attachAggregateSummaries(groups, collectAggregateExpressions(ast))
     steps.push({
       id: 'group',
       kind: 'groupBy',
@@ -105,8 +110,8 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
   }
 
   if (groups && ast.having.length) {
-    const before = groups
-    groups = groups.filter((group) => ast.having.every((condition) => evaluateCondition(condition, group.rows[0], group)))
+    const before = attachConditionEvaluations(groups, ast.having)
+    groups = before.filter((group) => group.conditions?.every((condition) => condition.result))
     steps.push({
       id: 'having',
       kind: 'having',
@@ -142,6 +147,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     const before = rows
     const sorted = sortRows(rows, projectionContexts, ast.orderBy)
     rows = sorted.map((item) => item.row)
+    const sortSummaries = sorted.map((item, index) => toSortSummary(item, ast.orderBy, index))
     steps.push({
       id: 'order-by',
       kind: 'orderBy',
@@ -151,6 +157,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       after: rows,
       details: ast.orderBy.map((item) => item.label),
       highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
+      sortSummaries,
     })
   }
 
@@ -284,6 +291,53 @@ function groupRows(rows: AliasedRow[], expressions: Expression[]): Group[] {
   }))
 }
 
+function attachAggregateSummaries(groups: Group[], expressions: Expression[]) {
+  if (!expressions.length) return groups
+  return groups.map((group) => ({
+    ...group,
+    aggregates: expressions.map((expression) => ({
+      label: expression.label,
+      value: evaluateExpression(expression, group.rows[0], group),
+    })),
+  }))
+}
+
+function attachConditionEvaluations(groups: Group[], conditions: Condition[]) {
+  return groups.map((group) => ({
+    ...group,
+    conditions: conditions.map((condition) => ({
+      label: condition.label,
+      result: evaluateCondition(condition, group.rows[0], group),
+    })),
+  }))
+}
+
+function collectAggregateExpressions(ast: QueryAST) {
+  const expressions = [
+    ...ast.select.flatMap((item) => collectAggregatesInExpression(item.expression)),
+    ...ast.having.flatMap((condition) => [
+      ...collectAggregatesInExpression(condition.left),
+      ...collectAggregatesInExpression(condition.right),
+    ]),
+    ...ast.orderBy.flatMap((item) => collectAggregatesInExpression(item.expression)),
+  ]
+  const seen = new Set<string>()
+  return expressions.filter((expression) => {
+    if (seen.has(expression.label)) return false
+    seen.add(expression.label)
+    return true
+  })
+}
+
+function collectAggregatesInExpression(expression: Expression): Extract<Expression, { type: 'aggregate' }>[] {
+  if (expression.type === 'aggregate') return [expression]
+  if (expression.type === 'binary') return [
+    ...collectAggregatesInExpression(expression.left),
+    ...collectAggregatesInExpression(expression.right),
+  ]
+  return []
+}
+
 function projectRows(select: SelectItem[], rows: AliasedRow[], groups?: Group[]): AliasedRow[] {
   if (groups) {
     return groups.map((group, index) => projectOne(select, group.rows[0], `result-${index + 1}`, group))
@@ -314,18 +368,45 @@ function projectSelectItem(item: SelectItem, row: AliasedRow, group?: Group): [s
   return [[item.alias ?? item.expression.label, evaluateExpression(item.expression, row, group)]]
 }
 
+type SortableRow = {
+  row: AliasedRow
+  context: { row: AliasedRow; group?: Group }
+  index: number
+  keys: Array<{ label: string; value: Scalar; direction: 'ASC' | 'DESC' }>
+}
+
 function sortRows(rows: AliasedRow[], contexts: Array<{ row: AliasedRow; group?: Group }>, orderBy: OrderItem[]) {
   return rows
-    .map((row, index) => ({ row, context: contexts[index], index }))
+    .map((row, index): SortableRow => ({
+      row,
+      context: contexts[index],
+      index,
+      keys: orderBy.map((order) => ({
+        label: order.expression.label,
+        value: evaluateOrderExpression(order.expression, row, contexts[index]),
+        direction: order.direction,
+      })),
+    }))
     .sort((left, right) => {
-      for (const order of orderBy) {
-        const leftValue = evaluateOrderExpression(order.expression, left.row, left.context)
-        const rightValue = evaluateOrderExpression(order.expression, right.row, right.context)
-        const comparison = compareScalars(leftValue, rightValue)
-        if (comparison !== 0) return order.direction === 'DESC' ? -comparison : comparison
+      for (let index = 0; index < orderBy.length; index += 1) {
+        const comparison = compareScalars(left.keys[index].value, right.keys[index].value)
+        if (comparison !== 0) return left.keys[index].direction === 'DESC' ? -comparison : comparison
       }
       return left.index - right.index
     })
+}
+
+function toSortSummary(item: SortableRow, orderBy: OrderItem[], afterIndex: number): SortSummary {
+  return {
+    rowId: item.row.id,
+    beforeRank: item.index + 1,
+    afterRank: afterIndex + 1,
+    keys: item.keys.map((key, index) => ({
+      label: orderBy[index].label.replace(/\s+(ASC|DESC)$/i, ''),
+      value: key.value,
+      direction: key.direction,
+    })),
+  }
 }
 
 function evaluateOrderExpression(expression: Expression, projectedRow: AliasedRow, context: { row: AliasedRow; group?: Group }) {

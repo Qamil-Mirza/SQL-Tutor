@@ -27,7 +27,7 @@ export function parseTableSql(input: string): Table[] {
   const tables = new Map<string, Table>()
 
   for (const statement of statements) {
-    const create = statement.match(/^CREATE\s+TABLE\s+([a-z_][\w]*)\s*\((.+)\)$/i)
+    const create = statement.match(/^CREATE\s+TABLE\s+([a-z_][\w]*)\s*\((.+)\)$/is)
     if (create) {
       const columns = splitComma(create[2]).map((part) => part.trim().split(/\s+/)[0]).filter(Boolean)
       if (!columns.length) throw new TableDefinitionError(`Table "${create[1]}" needs at least one column.`)
@@ -35,15 +35,17 @@ export function parseTableSql(input: string): Table[] {
       continue
     }
 
-    const insert = statement.match(/^INSERT\s+INTO\s+([a-z_][\w]*)\s+VALUES\s*\((.+)\)$/i)
+    const insert = statement.match(/^INSERT\s+INTO\s+([a-z_][\w]*)\s+VALUES\s+(.+)$/is)
     if (insert) {
       const table = tables.get(insert[1])
       if (!table) throw new TableDefinitionError(`INSERT references unknown table "${insert[1]}". Define it with CREATE TABLE first.`)
-      const values = splitComma(insert[2]).map(parseValue)
-      if (values.length !== table.columns.length) {
-        throw new TableDefinitionError(`INSERT into "${table.name}" has ${values.length} values but ${table.columns.length} columns.`)
+      for (const rowText of splitInsertRows(insert[2])) {
+        const values = splitComma(rowText).map(parseValue)
+        if (values.length !== table.columns.length) {
+          throw new TableDefinitionError(`INSERT into "${table.name}" has ${values.length} values but ${table.columns.length} columns.`)
+        }
+        table.rows.push(Object.fromEntries(table.columns.map((column, index) => [column, values[index]])) as Row)
       }
-      table.rows.push(Object.fromEntries(table.columns.map((column, index) => [column, values[index]])) as Row)
       continue
     }
 
@@ -83,4 +85,41 @@ function splitComma(text: string) {
   }
   if (current.trim()) parts.push(current.trim())
   return parts
+}
+
+function splitInsertRows(text: string) {
+  const rows: string[] = []
+  let inQuote = false
+  let depth = 0
+  let current = ''
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === "'") inQuote = !inQuote
+    if (!inQuote && char === '(') {
+      if (depth > 0) current += char
+      depth += 1
+      continue
+    }
+    if (!inQuote && char === ')') {
+      depth -= 1
+      if (depth === 0) {
+        rows.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
+      continue
+    }
+    if (depth > 0) {
+      current += char
+      continue
+    }
+    if (!/\s|,/.test(char)) {
+      throw new TableDefinitionError(`Unsupported INSERT values: ${text.trim()}. Use parenthesized row values.`)
+    }
+  }
+  if (depth !== 0 || inQuote) {
+    throw new TableDefinitionError(`Unsupported INSERT values: ${text.trim()}. Check parentheses and quotes.`)
+  }
+  return rows
 }

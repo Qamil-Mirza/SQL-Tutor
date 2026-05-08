@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { executeQuery } from './engine'
 import { parseQuery } from './parser'
 import { initialTables } from './samples'
-import type { Table } from './types'
+import type { Group, Table } from './types'
 
 function rowsFor(sql: string) {
   const steps = executeQuery(parseQuery(sql), initialTables)
@@ -22,6 +22,16 @@ describe('executeQuery', () => {
     expect(rows.map((row) => row.values['u.name'])).toEqual(['Ada', 'Chen'])
   })
 
+  it('highlights columns added by a joined table', () => {
+    const steps = executeQuery(parseQuery('SELECT u.name, l.artist FROM users AS u JOIN listening AS l ON u.id = l.user_id'), initialTables)
+    const joinStep = steps.find((step) => step.kind === 'join')
+
+    expect(joinStep?.highlights).toContainEqual({
+      kind: 'selected',
+      columnKeys: ['l.id', 'l.user_id', 'l.artist', 'l.minutes'],
+    })
+  })
+
   it('supports self joins', () => {
     const rows = rowsFor('SELECT e.name AS employee, m.name AS manager FROM employees AS e JOIN employees AS m ON e.manager_id = m.id')
     expect(rows).toHaveLength(3)
@@ -35,6 +45,33 @@ describe('executeQuery', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].values.plays).toBe(3)
     expect(rows[0].values.minutes).toBe(165)
+  })
+
+  it('adds aggregate summaries to groups for select and having expressions', () => {
+    const steps = executeQuery(
+      parseQuery('SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80'),
+      initialTables,
+    )
+    const groupStep = steps.find((step) => step.kind === 'groupBy')!
+    const proGroup = groupStep.after.find((group) => 'rows' in group && group.key === 'pro') as Group | undefined
+
+    expect(proGroup?.aggregates).toEqual([
+      { label: 'COUNT(*)', value: 3 },
+      { label: 'SUM(l.minutes)', value: 165 },
+    ])
+  })
+
+  it('adds having condition evaluations to groups', () => {
+    const steps = executeQuery(
+      parseQuery('SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80'),
+      initialTables,
+    )
+    const havingStep = steps.find((step) => step.kind === 'having')!
+    const removedGroup = havingStep.before?.find((group) => 'rows' in group && group.key === 'free') as Group | undefined
+
+    expect(removedGroup?.conditions).toEqual([
+      { label: 'SUM(l.minutes) > 80', result: false },
+    ])
   })
 
   it('applies limit after projection', () => {
@@ -75,6 +112,18 @@ describe('executeQuery', () => {
     expect(steps.map((step) => step.kind)).toContain('orderBy')
     expect(rows).toHaveLength(1)
     expect(rows[0].values['u.Top_Genre']).toBe('Afrobeats')
+  })
+
+  it('adds sort keys and rank movement to order by steps', () => {
+    const steps = executeQuery(parseQuery('SELECT u.name, u.tier FROM users AS u ORDER BY u.name DESC'), initialTables)
+    const orderStep = steps.find((step) => step.kind === 'orderBy')
+
+    expect(orderStep?.sortSummaries).toEqual([
+      { rowId: 'result-4', beforeRank: 4, afterRank: 1, keys: [{ label: 'u.name', value: 'Dina', direction: 'DESC' }] },
+      { rowId: 'result-3', beforeRank: 3, afterRank: 2, keys: [{ label: 'u.name', value: 'Chen', direction: 'DESC' }] },
+      { rowId: 'result-2', beforeRank: 2, afterRank: 3, keys: [{ label: 'u.name', value: 'Ben', direction: 'DESC' }] },
+      { rowId: 'result-1', beforeRank: 1, afterRank: 4, keys: [{ label: 'u.name', value: 'Ada', direction: 'DESC' }] },
+    ])
   })
 
   it('projects aggregate arithmetic and orders by its alias', () => {
