@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { executeQuery } from './engine'
 import { parseQuery } from './parser'
 import { initialTables } from './samples'
-import type { Group, Table } from './types'
+import type { AliasedRow, Group, Table } from './types'
 
 function rowsFor(sql: string) {
   const steps = executeQuery(parseQuery(sql), initialTables)
@@ -345,9 +345,11 @@ describe('executeQuery', () => {
     expect(whereSteps.map((step) => step.id)).toEqual(['where-1', 'where-2'])
     expect(whereSteps.map((step) => step.details)).toEqual([['m1.name > m2.name'], ['m1.language = m2.language']])
     expect(whereSteps[0].before).toHaveLength(16)
-    expect(whereSteps[0].after).toHaveLength(16)
+    expect(whereSteps[0].after).toHaveLength(6)
     expect(whereSteps[1].before).toHaveLength(6)
-    expect(whereSteps[1].after).toHaveLength(6)
+    expect(whereSteps[1].after).toHaveLength(2)
+    const afterRows = whereSteps.flatMap((step) => step.after as AliasedRow[])
+    expect(afterRows.some((row) => row.id.includes('__removed'))).toBe(false)
     expect(steps.at(-1)!.after).toHaveLength(2)
   })
 })
