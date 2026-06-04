@@ -121,6 +121,38 @@ describe('executeQuery', () => {
     expect(rows[0].values['u.Top_Genre']).toBe('Afrobeats')
   })
 
+  it('executes comma joins that use table names as implicit aliases', () => {
+    const petTables: Table[] = [
+      {
+        name: 'friends',
+        columns: ['name', 'animal'],
+        rows: [
+          { name: 'Ada', animal: 'cat' },
+          { name: 'Ben', animal: 'dog' },
+          { name: 'Chen', animal: 'dog' },
+        ],
+      },
+      {
+        name: 'animals',
+        columns: ['animal', 'sound'],
+        rows: [
+          { animal: 'cat', sound: 'meow' },
+          { animal: 'dog', sound: 'woof' },
+        ],
+      },
+    ]
+
+    const rows = executeQuery(
+      parseQuery('SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC'),
+      petTables,
+    ).at(-1)!.after
+
+    expect(rows.map((row) => row.values)).toEqual([
+      { 'animals.sound': 'meow', 'COUNT(*)': 1 },
+      { 'animals.sound': 'woof', 'COUNT(*)': 2 },
+    ])
+  })
+
   it('adds sort keys and rank movement to order by steps', () => {
     const steps = executeQuery(parseQuery('SELECT u.name, u.tier FROM users AS u ORDER BY u.name DESC'), initialTables)
     const orderStep = steps.find((step) => step.kind === 'orderBy')

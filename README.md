@@ -17,7 +17,7 @@ Users can generate read-only share links from the query or trace workflow. Share
 - `SELECT` columns, `SELECT *`, and aggregate expressions: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`
 - Arithmetic expressions with `+`, `-`, `*`, and `/`
 - `FROM table`, `FROM table AS alias`, or `FROM table alias`
-- One optional inner `JOIN table AS alias ON condition` or comma join `FROM table AS alias, table AS alias`
+- One optional inner `JOIN table AS alias ON condition` or comma join such as `FROM table_a, table_b` or `FROM table_a AS a, table_b AS b`
 - Optional `WHERE` comparisons joined with `AND`
 - Optional `GROUP BY`
 - Optional `HAVING`
@@ -26,7 +26,7 @@ Users can generate read-only share links from the query or trace workflow. Share
 - Qualified and unqualified columns, single- or double-quoted string literals, number/null literals, and comparison operators `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=`
 - Numeric comparisons for numeric values and lexicographic comparisons for non-numeric values
 
-Aliases are optional in `FROM`; when omitted, the table name is used as the alias. Joined tables still need explicit aliases so the visualizer can preserve row provenance clearly, but the `AS` keyword is optional.
+Aliases are optional in `FROM`; when omitted, the table name is used as the alias. Comma-joined tables can also use their table names as aliases when those names are unique. Explicit `JOIN` sources still need aliases so the visualizer can preserve row provenance clearly, but the `AS` keyword is optional.
 
 ## Non-goals
 

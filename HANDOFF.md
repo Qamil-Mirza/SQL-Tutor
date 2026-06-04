@@ -9,7 +9,7 @@ Build an educational SQL logical execution visualizer for CSM C88C. The design p
 - `SELECT` columns, `SELECT *`, and aggregate expressions: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`
 - Arithmetic expressions with `+`, `-`, `*`, and `/`
 - Required `FROM table`, with optional `AS alias` or bare alias
-- Optional single inner `JOIN table AS alias ON condition` or comma join `FROM table AS alias, table AS alias`
+- Optional single inner `JOIN table AS alias ON condition` or comma join `FROM table_a, table_b` / `FROM table AS alias, table AS alias`
 - Optional `WHERE` with simple comparisons joined by `AND`
 - Optional `GROUP BY`
 - Optional `HAVING`
@@ -18,11 +18,11 @@ Build an educational SQL logical execution visualizer for CSM C88C. The design p
 - Qualified and unqualified columns, single- or double-quoted string literals, number literals, null literals, and comparison operators `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=`
 - Numeric comparisons for numeric values and lexicographic comparisons for non-numeric values
 
-Aliases are optional for `FROM`; when omitted, the table name is used as the alias. Aliases are required for `JOIN`, but `AS` is optional. Explicit non-goals are full SQL compatibility, optimizer visualization, subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, and nested joins.
+Aliases are optional for `FROM`; when omitted, the table name is used as the alias. Comma-joined tables can use implicit table-name aliases when unique. Aliases are required for explicit `JOIN`, but `AS` is optional. Explicit non-goals are full SQL compatibility, optimizer visualization, subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, and nested joins.
 
 ## Architecture Overview
 
-Parser responsibilities live in `src/domain/parser.ts`. The parser normalizes whitespace, rejects unsupported clauses early, accepts `FROM table`, `FROM table alias`, or `FROM table AS alias`, accepts one comma-joined source in `FROM`, requires explicit aliases for joined sources, and builds a `QueryAST` from the supported subset.
+Parser responsibilities live in `src/domain/parser.ts`. The parser normalizes whitespace, rejects unsupported clauses early, accepts `FROM table`, `FROM table alias`, or `FROM table AS alias`, accepts one comma-joined source in `FROM`, allows unique implicit aliases for comma joins, requires explicit aliases for explicit `JOIN` sources, and builds a `QueryAST` from the supported subset.
 
 Execution engine responsibilities live in `src/domain/engine.ts`. The engine evaluates the AST against in-memory tables in logical order: `FROM`, `JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `SELECT`, `ORDER BY`, `LIMIT`, `Result`. It preserves stable row provenance through aliasing, joins, grouping, filtering, sorting, projection, and limiting.
 

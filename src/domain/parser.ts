@@ -39,7 +39,11 @@ export function parseQuery(input: string): QueryAST {
   const onText = clauses.ON ? textForClause(sql, clauses, 'ON') : undefined
   let join: QueryAST['join']
   if (fromSources[1]) {
-    join = { ...parseTableSource(fromSources[1], true), syntax: 'comma' }
+    const commaJoinSource = parseTableSource(fromSources[1], false)
+    if (commaJoinSource.alias === fromSource.alias) {
+      throw new QueryParseError('Joined tables must use unique aliases.')
+    }
+    join = { ...commaJoinSource, syntax: 'comma' }
   }
   if (joinText || onText) {
     const joinSource = joinText ? parseTableSource(joinText, true) : undefined

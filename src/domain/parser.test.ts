@@ -81,6 +81,21 @@ describe('parseQuery', () => {
     expect(ast.where).toHaveLength(1)
   })
 
+  it('parses comma joins that use table names as implicit aliases', () => {
+    const ast = parseQuery(
+      'SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC',
+    )
+    expect(ast.from).toEqual({ tableName: 'friends', alias: 'friends' })
+    expect(ast.join).toEqual({ tableName: 'animals', alias: 'animals', syntax: 'comma' })
+    expect(ast.where[0].label).toBe('friends.animal = animals.animal')
+    expect(ast.groupBy).toHaveLength(1)
+    expect(ast.orderBy[0].label).toBe('COUNT(*) ASC')
+  })
+
+  it('requires comma-joined self joins to use aliases', () => {
+    expect(() => parseQuery('SELECT mentors.name FROM mentors, mentors WHERE mentors.name = mentors.name')).toThrow(/Joined tables must use/)
+  })
+
   it('parses double-quoted string literals in conditions', () => {
     const ast = parseQuery('SELECT * FROM mentors WHERE editor = "Vim"')
     expect(ast.where[0].right).toEqual({ type: 'literal', value: 'Vim', label: '"Vim"' })
