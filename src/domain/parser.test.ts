@@ -19,6 +19,28 @@ describe('parseQuery', () => {
     expect(ast.having).toHaveLength(1)
   })
 
+  it('parses table aliases without AS', () => {
+    const ast = parseQuery(
+      'SELECT employee.name, manager.name FROM employees employee JOIN employees manager ON employee.manager_id = manager.id',
+    )
+    expect(ast.from).toEqual({ tableName: 'employees', alias: 'employee' })
+    expect(ast.join).toEqual({
+      tableName: 'employees',
+      alias: 'manager',
+      condition: {
+        left: { type: 'column', tableAlias: 'employee', column: 'manager_id', label: 'employee.manager_id' },
+        operator: '=',
+        right: { type: 'column', tableAlias: 'manager', column: 'id', label: 'manager.id' },
+        label: 'employee.manager_id = manager.id',
+      },
+      syntax: 'explicit',
+    })
+  })
+
+  it('still requires a joined table alias when the same table name would be reused', () => {
+    expect(() => parseQuery('SELECT employees.name FROM employees JOIN employees ON employees.manager_id = employees.id')).toThrow(/Joined tables must use/)
+  })
+
   it('parses order by expressions and directions', () => {
     const ast = parseQuery('SELECT u.tier FROM users AS u GROUP BY u.tier ORDER BY COUNT(*) DESC, u.tier ASC LIMIT 1')
     expect(ast.orderBy).toEqual([

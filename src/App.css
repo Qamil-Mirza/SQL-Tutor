@@ -453,6 +453,12 @@ button:disabled {
   justify-self: start;
 }
 
+.share-link-panel input {
+  min-height: 40px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
 .error-box {
   margin-top: 14px;
   border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--danger-soft));

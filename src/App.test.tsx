@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
+import { createShareUrl } from './domain/shareSnapshot'
 
 afterEach(() => {
   window.history.pushState({}, '', '/')
@@ -339,10 +340,72 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(window.location.pathname).toBe('/visualization')
     expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Tables' })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     expect(window.location.pathname).toBe('/query')
     expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
+  })
+
+  it('opens a shared link directly on the trace page', () => {
+    const shareUrl = createShareUrl({
+      origin: window.location.origin,
+      snapshot: {
+        version: 1,
+        tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');",
+        sql: 'SELECT p.name FROM pets AS p',
+      },
+    })
+    window.history.pushState({}, '', new URL(shareUrl).pathname + new URL(shareUrl).search)
+
+    render(<App />)
+
+    expect(window.location.pathname).toBe('/visualization')
+    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(screen.getAllByText('Miso').length).toBeGreaterThan(0)
+  })
+
+  it('keeps the original shared link immutable when a viewer edits locally', async () => {
+    const shareUrl = createShareUrl({
+      origin: window.location.origin,
+      snapshot: {
+        version: 1,
+        tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');",
+        sql: 'SELECT p.name FROM pets AS p',
+      },
+    })
+    const sharedLocation = new URL(shareUrl)
+    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
+
+    const { unmount } = render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT p.id FROM pets AS p')
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.id FROM pets AS p')
+
+    unmount()
+    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
+  })
+
+  it('generates a visible share link for the current workspace', async () => {
+    const { unmount } = render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }))
+
+    const shareLink = screen.getByLabelText('Share link')
+    expect((shareLink as HTMLInputElement).value).toContain('/visualization?share=')
+
+    const sharedLocation = new URL((shareLink as HTMLInputElement).value)
+    unmount()
+    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
+    render(<App />)
+    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
   })
 })

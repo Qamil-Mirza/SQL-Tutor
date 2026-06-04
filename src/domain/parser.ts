@@ -73,9 +73,9 @@ export function parseQuery(input: string): QueryAST {
 }
 
 function parseTableSource(text: string, requireAlias: boolean) {
-  const match = text.trim().match(/^([a-z_][\w]*)(?:\s+AS\s+([a-z_][\w]*))?$/i)
-  if (!match) throw new QueryParseError('FROM must use the form: FROM table or FROM table AS alias.')
-  if (requireAlias && !match[2]) throw new QueryParseError('Joined tables must use the form: table AS alias.')
+  const match = text.trim().match(/^([a-z_][\w]*)(?:\s+(?:AS\s+)?([a-z_][\w]*))?$/i)
+  if (!match) throw new QueryParseError('FROM must use the form: FROM table, FROM table alias, or FROM table AS alias.')
+  if (requireAlias && !match[2]) throw new QueryParseError('Joined tables must use the form: table alias or table AS alias.')
   return { tableName: match[1], alias: match[2] ?? match[1] }
 }
 

@@ -38,6 +38,13 @@ describe('executeQuery', () => {
     expect(rows[0].values.manager).toBe('Priya')
   })
 
+  it('supports self joins with aliases that omit AS', () => {
+    const rows = rowsFor('SELECT employee.name, manager.name FROM employees employee JOIN employees manager ON employee.manager_id = manager.id')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].values['employee.name']).toBe('Mateo')
+    expect(rows[0].values['manager.name']).toBe('Priya')
+  })
+
   it('groups, filters groups with having, and projects aggregates', () => {
     const rows = rowsFor(
       'SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80',

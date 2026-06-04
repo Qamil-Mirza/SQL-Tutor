@@ -8,11 +8,15 @@ Users define tables with Table SQL: `CREATE TABLE table_name (col_a, col_b);` an
 
 The app starts with starter data and one starter query so the visualizer is useful immediately, but the visible workflow is centered on user-owned table definitions.
 
+## Sharing Workspaces
+
+Users can generate read-only share links from the query or trace workflow. Share links encode a compressed snapshot of the table SQL and query in the URL, so no server-side database, slug cleanup, or expiration job is required. Opening a shared link loads that snapshot as a sandbox copy: viewers can edit and experiment locally, but reopening the original link restores the creator's original table and query state.
+
 ## Supported SQL
 
 - `SELECT` columns, `SELECT *`, and aggregate expressions: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`
 - Arithmetic expressions with `+`, `-`, `*`, and `/`
-- `FROM table` or `FROM table AS alias`
+- `FROM table`, `FROM table AS alias`, or `FROM table alias`
 - One optional inner `JOIN table AS alias ON condition` or comma join `FROM table AS alias, table AS alias`
 - Optional `WHERE` comparisons joined with `AND`
 - Optional `GROUP BY`
@@ -22,11 +26,11 @@ The app starts with starter data and one starter query so the visualizer is usef
 - Qualified and unqualified columns, single- or double-quoted string literals, number/null literals, and comparison operators `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=`
 - Numeric comparisons for numeric values and lexicographic comparisons for non-numeric values
 
-Aliases are optional in `FROM`; when omitted, the table name is used as the alias. Aliases are still required in `JOIN` so the visualizer can preserve row provenance clearly.
+Aliases are optional in `FROM`; when omitted, the table name is used as the alias. Joined tables still need explicit aliases so the visualizer can preserve row provenance clearly, but the `AS` keyword is optional.
 
 ## Non-goals
 
-This project does not implement a full SQL engine, optimizer behavior, persistence, auth, backend services, database connectivity, subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, or nested joins.
+This project does not implement a full SQL engine, optimizer behavior, server-side persistence, auth, backend services, database connectivity, subqueries, CTEs, outer joins, `DISTINCT`, `UNION`, window functions, or nested joins.
 
 ## Starter Query
 
