@@ -56,6 +56,45 @@ describe('App', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
   })
 
+  it('requires valid table SQL before using workflow navigation to trace', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
+    await userEvent.click(screen.getByRole('button', { name: 'Trace' }))
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
+  })
+
+  it('redirects direct query route entry when saved table SQL is invalid', () => {
+    window.localStorage.setItem(
+      'c88c-sql-tutor-workspace',
+      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
+    )
+    window.history.pushState({}, '', '/query')
+
+    render(<App />)
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Query' })).not.toBeInTheDocument()
+  })
+
+  it('redirects direct visualization route entry when saved table SQL is invalid', () => {
+    window.localStorage.setItem(
+      'c88c-sql-tutor-workspace',
+      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
+    )
+    window.history.pushState({}, '', '/visualization')
+
+    render(<App />)
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
+  })
+
   it('contains wide table previews inside the table creation page', () => {
     render(<App />)
     expect(screen.getByLabelText('Table creation page').querySelector('.table-overflow-boundary')).toBeInTheDocument()

@@ -17,16 +17,21 @@ type WorkspaceSnapshot = {
 
 type AppRoute = '/tables' | '/query' | '/visualization'
 
+type InitialAppState = WorkspaceSnapshot & {
+  path: AppRoute
+  tableError?: string
+}
+
 function App() {
-  const savedWorkspace = useMemo(() => loadWorkspace(), [])
-  const [path, setPath] = useState<AppRoute>(() => normalizeRoute(window.location.pathname))
-  const [tables, setTables] = useState<Table[]>(savedWorkspace.tables)
-  const [tableSql, setTableSql] = useState(savedWorkspace.tableSql)
-  const [sql, setSql] = useState(savedWorkspace.sql)
+  const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
+  const [path, setPath] = useState<AppRoute>(initialState.path)
+  const [tables, setTables] = useState<Table[]>(initialState.tables)
+  const [tableSql, setTableSql] = useState(initialState.tableSql)
+  const [sql, setSql] = useState(initialState.sql)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState<string>()
-  const [tableError, setTableError] = useState<string>()
-  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(savedWorkspace.sql, savedWorkspace.tables).steps)
+  const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
+  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(initialState.sql, initialState.tables).steps)
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
@@ -35,15 +40,26 @@ function App() {
 
   useEffect(() => {
     function handlePopState() {
-      setPath(normalizeRoute(window.location.pathname))
+      enterRoute(normalizeRoute(window.location.pathname), 'replace')
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  })
 
-  function navigate(nextPath: AppRoute) {
-    window.history.pushState({}, '', nextPath)
+  function navigate(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
+    window.history[historyMode === 'push' ? 'pushState' : 'replaceState']({}, '', nextPath)
     setPath(nextPath)
+  }
+
+  function enterRoute(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
+    if (isGuardedRoute(nextPath) && path === '/tables') {
+      const nextTables = applyTableSql()
+      if (!nextTables) {
+        navigate('/tables', 'replace')
+        return
+      }
+    }
+    navigate(nextPath, historyMode)
   }
 
   function handleRun(nextSql = sql, nextTables = tables) {
@@ -72,16 +88,11 @@ function App() {
   }
 
   function handleContinueToQuery() {
-    const nextTables = applyTableSql()
-    if (nextTables) navigate('/query')
+    enterRoute('/query')
   }
 
   function handleShellNavigate(nextPath: AppRoute) {
-    if (nextPath === '/query' && path === '/tables') {
-      handleContinueToQuery()
-      return
-    }
-    navigate(nextPath)
+    enterRoute(nextPath)
   }
 
   if (path === '/visualization') {
@@ -154,10 +165,31 @@ function App() {
   )
 }
 
+function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): InitialAppState {
+  const path = normalizeRoute(pathname)
+  if (!isGuardedRoute(path)) return { ...workspace, path }
+
+  try {
+    const tables = parseTableSql(workspace.tableSql)
+    return { ...workspace, tables, path }
+  } catch (error) {
+    window.history.replaceState({}, '', '/tables')
+    return {
+      ...workspace,
+      path: '/tables',
+      tableError: error instanceof Error ? error.message : 'The table SQL could not be applied.',
+    }
+  }
+}
+
 function normalizeRoute(pathname: string): AppRoute {
   if (pathname === '/query' || pathname === '/visualization' || pathname === '/tables') return pathname
   window.history.replaceState({}, '', '/tables')
   return '/tables'
+}
+
+function isGuardedRoute(path: AppRoute) {
+  return path === '/query' || path === '/visualization'
 }
 
 function AppShell({
