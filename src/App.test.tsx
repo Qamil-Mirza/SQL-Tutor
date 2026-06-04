@@ -8,30 +8,101 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
+async function advanceToQueryPage() {
+  await userEvent.click(screen.getByRole('button', { name: 'Continue to Query' }))
+}
+
 describe('App', () => {
-  it('presents table creation and query writing on the authoring page', () => {
+  it('starts on a focused table creation page', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: 'Tables and query' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Create table' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Run a query' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('heading', { name: 'Tables' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Table creation page')).toContainElement(screen.getByRole('heading', { name: 'Create table' }))
+    expect(screen.queryByRole('heading', { name: 'Run a query' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Starter query ready')).not.toBeInTheDocument()
   })
 
-  it('uses a two-pane authoring layout for table creation and querying', () => {
+  it('applies valid table SQL before navigating to the query page', async () => {
     render(<App />)
-    expect(document.querySelector('.authoring-pane-grid')).toBeInTheDocument()
-    expect(screen.getByLabelText('Table creation pane')).toContainElement(screen.getByRole('heading', { name: 'Create table' }))
-    expect(screen.getByLabelText('Query pane')).toContainElement(screen.getByRole('heading', { name: 'Run a query' }))
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
+    await advanceToQueryPage()
+
+    expect(window.location.pathname).toBe('/query')
+    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Query page table context')).toHaveTextContent('pets')
+    expect(screen.getByText('Miso')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Table SQL')).not.toBeInTheDocument()
   })
 
-  it('contains wide table previews inside the table creation pane', () => {
+  it('stays on the table page when table SQL is invalid', async () => {
     render(<App />)
-    expect(screen.getByLabelText('Table creation pane').querySelector('.table-overflow-boundary')).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
+    await advanceToQueryPage()
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Query' })).not.toBeInTheDocument()
+  })
+
+  it('requires valid table SQL before using workflow navigation to query', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
+    await userEvent.click(screen.getByRole('button', { name: 'Query' }))
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+  })
+
+  it('requires valid table SQL before using workflow navigation to trace', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
+    await userEvent.click(screen.getByRole('button', { name: 'Trace' }))
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
+  })
+
+  it('redirects direct query route entry when saved table SQL is invalid', () => {
+    window.localStorage.setItem(
+      'c88c-sql-tutor-workspace',
+      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
+    )
+    window.history.pushState({}, '', '/query')
+
+    render(<App />)
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Query' })).not.toBeInTheDocument()
+  })
+
+  it('redirects direct visualization route entry when saved table SQL is invalid', () => {
+    window.localStorage.setItem(
+      'c88c-sql-tutor-workspace',
+      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
+    )
+    window.history.pushState({}, '', '/visualization')
+
+    render(<App />)
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
+    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
+  })
+
+  it('contains wide table previews inside the table creation page', () => {
+    render(<App />)
+    expect(screen.getByLabelText('Table creation page').querySelector('.table-overflow-boundary')).toBeInTheDocument()
   })
 
   it('runs the starter query and navigates steps', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(window.location.pathname).toBe('/visualization')
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
@@ -41,6 +112,7 @@ describe('App', () => {
 
   it('renders self-join visualization', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT e.name AS employee, m.name AS manager FROM employees AS e JOIN employees AS m ON e.manager_id = m.id WHERE e.salary < m.salary')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
@@ -52,10 +124,11 @@ describe('App', () => {
 
   it('shows friendly errors', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT DISTINCT name FROM users')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(window.location.pathname).toBe('/')
+    expect(window.location.pathname).toBe('/query')
     expect(screen.getByRole('alert')).toHaveTextContent('DISTINCT is not supported')
   })
 
@@ -65,6 +138,7 @@ describe('App', () => {
     await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
     await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
     expect(screen.getByRole('heading', { name: 'pets' })).toBeInTheDocument()
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT p.name FROM pets AS p')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
@@ -94,6 +168,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
     expect(screen.getByRole('heading', { name: 'User_Data' })).toBeInTheDocument()
     expect(screen.getByText('ROSALÍA')).toBeInTheDocument()
+    await advanceToQueryPage()
 
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), "SELECT u.Top_Artist FROM User_Data AS u WHERE u.Location = 'San Jose'")
@@ -111,6 +186,7 @@ describe('App', () => {
       "CREATE TABLE mentors (name, food, color, editor, language);{enter}INSERT INTO mentors VALUES ('Chi', 'Thai', 'Purple', 'Notepad++', 'Java');{enter}INSERT INTO mentors VALUES ('Kaitlyn', 'Pie', 'Green', 'Sublime', 'Java');",
     )
     await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT * FROM mentors')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
@@ -127,9 +203,10 @@ describe('App', () => {
     await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE users (id, name, tier, region);{enter}INSERT INTO users VALUES (1, 'Grace', 'pro', 'west');")
     await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
     expect(screen.getByText('Grace')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/')
+    expect(window.location.pathname).toBe('/tables')
     expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
 
+    await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(screen.getAllByText('Grace').length).toBeGreaterThan(0)
   })
@@ -169,6 +246,7 @@ describe('App', () => {
   })
 
   it('renders readable SQL keyword highlighting', () => {
+    window.history.pushState({}, '', '/query')
     render(<App />)
     expect(screen.getByText('SELECT')).toHaveClass('sql-keyword-select')
     expect(screen.getByText('WHERE')).toHaveClass('sql-keyword-filter')
@@ -176,6 +254,7 @@ describe('App', () => {
 
   it('grows the SQL query editor for longer queries', async () => {
     render(<App />)
+    await advanceToQueryPage()
     const editor = screen.getByLabelText('SQL query editor')
     expect(editor).toHaveAttribute('rows', '6')
 
@@ -197,6 +276,7 @@ describe('App', () => {
 
   it('colors selected columns green on the SELECT step', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     await userEvent.click(screen.getByLabelText('Next step'))
     await userEvent.click(screen.getByLabelText('Next step'))
@@ -206,6 +286,7 @@ describe('App', () => {
 
   it('shows aggregate values on grouped query steps', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(
       screen.getByLabelText('SQL query editor'),
@@ -222,6 +303,7 @@ describe('App', () => {
 
   it('marks groups removed by HAVING', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(
       screen.getByLabelText('SQL query editor'),
@@ -239,6 +321,7 @@ describe('App', () => {
 
   it('shows sort keys and rank movement on ORDER BY steps', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT u.name, u.tier FROM users AS u ORDER BY u.name DESC')
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
@@ -252,13 +335,14 @@ describe('App', () => {
 
   it('shows the visualization page as a focused route with a back action', async () => {
     render(<App />)
+    await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(window.location.pathname).toBe('/visualization')
     expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Tables and query' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Tables' })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Back to editor' }))
-    expect(window.location.pathname).toBe('/')
-    expect(screen.getByRole('heading', { name: 'Tables and query' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+    expect(window.location.pathname).toBe('/query')
+    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
   })
 })

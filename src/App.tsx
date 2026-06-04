@@ -15,16 +15,23 @@ type WorkspaceSnapshot = {
   sql: string
 }
 
+type AppRoute = '/tables' | '/query' | '/visualization'
+
+type InitialAppState = WorkspaceSnapshot & {
+  path: AppRoute
+  tableError?: string
+}
+
 function App() {
-  const savedWorkspace = useMemo(() => loadWorkspace(), [])
-  const [path, setPath] = useState(() => (window.location.pathname === '/visualization' ? '/visualization' : '/'))
-  const [tables, setTables] = useState<Table[]>(savedWorkspace.tables)
-  const [tableSql, setTableSql] = useState(savedWorkspace.tableSql)
-  const [sql, setSql] = useState(savedWorkspace.sql)
+  const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
+  const [path, setPath] = useState<AppRoute>(initialState.path)
+  const [tables, setTables] = useState<Table[]>(initialState.tables)
+  const [tableSql, setTableSql] = useState(initialState.tableSql)
+  const [sql, setSql] = useState(initialState.sql)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState<string>()
-  const [tableError, setTableError] = useState<string>()
-  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(savedWorkspace.sql, savedWorkspace.tables).steps)
+  const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
+  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(initialState.sql, initialState.tables).steps)
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
@@ -33,15 +40,26 @@ function App() {
 
   useEffect(() => {
     function handlePopState() {
-      setPath(window.location.pathname === '/visualization' ? '/visualization' : '/')
+      enterRoute(normalizeRoute(window.location.pathname), 'replace')
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  })
 
-  function navigate(nextPath: '/' | '/visualization') {
-    window.history.pushState({}, '', nextPath)
+  function navigate(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
+    window.history[historyMode === 'push' ? 'pushState' : 'replaceState']({}, '', nextPath)
     setPath(nextPath)
+  }
+
+  function enterRoute(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
+    if (isGuardedRoute(nextPath) && path === '/tables') {
+      const nextTables = applyTableSql()
+      if (!nextTables) {
+        navigate('/tables', 'replace')
+        return
+      }
+    }
+    navigate(nextPath, historyMode)
   }
 
   function handleRun(nextSql = sql, nextTables = tables) {
@@ -53,28 +71,40 @@ function App() {
     if (!result.error) navigate('/visualization')
   }
 
-  function handleApplyTableSql() {
+  function applyTableSql() {
     try {
       const nextTables = parseTableSql(tableSql)
       setTables(nextTables)
       setTableError(undefined)
+      return nextTables
     } catch (error) {
       setTableError(error instanceof Error ? error.message : 'The table SQL could not be applied.')
+      return undefined
     }
+  }
+
+  function handleApplyTableSql() {
+    applyTableSql()
+  }
+
+  function handleContinueToQuery() {
+    enterRoute('/query')
+  }
+
+  function handleShellNavigate(nextPath: AppRoute) {
+    enterRoute(nextPath)
   }
 
   if (path === '/visualization') {
     return (
-      <AppShell>
+      <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
           <div className="trace-card trace-nav-card">
             <div>
-              <p className="eyebrow">Trace</p>
               <h1 id="trace-heading">Trace</h1>
-              <p className="pane-copy">Walk through each logical SQL operation and compare what changed.</p>
             </div>
-            <button className="secondary-button back-button" type="button" onClick={() => navigate('/')}>
-              Back to editor
+            <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
+              Back to query
             </button>
             <StepNavigator
               steps={steps}
@@ -92,43 +122,85 @@ function App() {
     )
   }
 
-  return (
-    <AppShell>
-      <div className="authoring-grid">
-        <section className="build-pane" aria-label="Build workspace">
-          <div className="pane-heading">
-            <p className="eyebrow">Build</p>
-            <h1>Tables and query</h1>
-            <p className="pane-copy">Create tables, inspect the data, write SQL, then open a focused visualization.</p>
+  if (path === '/query') {
+    return (
+      <AppShell path={path} onNavigate={handleShellNavigate}>
+        <section className="workflow-page query-route" aria-label="Query page">
+          <div className="pane-heading compact-heading">
+            <h1>Query</h1>
+            <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
+              Back to tables
+            </button>
           </div>
-
-          <div className="authoring-pane-grid">
-            <div className="authoring-pane" aria-label="Table creation pane">
-              <TableBuilder
-                tables={tables}
-                tableSql={tableSql}
-                tableError={tableError}
-                onTableSqlChange={setTableSql}
-                onApplyTableSql={handleApplyTableSql}
-              />
-            </div>
-
-            <div className="authoring-pane" aria-label="Query pane">
-              <QueryEditor
-                sql={sql}
-                error={error}
-                onSqlChange={setSql}
-                onRun={() => handleRun()}
-              />
-            </div>
+          <div className="query-page-grid">
+            <QueryEditor
+              sql={sql}
+              error={error}
+              onSqlChange={setSql}
+              onRun={() => handleRun()}
+            />
+            <TableContext tables={tables} />
           </div>
         </section>
-      </div>
+      </AppShell>
+    )
+  }
+
+  return (
+    <AppShell path={path} onNavigate={handleShellNavigate}>
+      <section className="workflow-page tables-route" aria-label="Table creation page">
+        <div className="pane-heading compact-heading">
+          <h1>Tables</h1>
+        </div>
+        <TableBuilder
+          tables={tables}
+          tableSql={tableSql}
+          tableError={tableError}
+          onTableSqlChange={setTableSql}
+          onApplyTableSql={handleApplyTableSql}
+          onContinue={handleContinueToQuery}
+        />
+      </section>
     </AppShell>
   )
 }
 
-function AppShell({ children }: { children: ReactNode }) {
+function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): InitialAppState {
+  const path = normalizeRoute(pathname)
+  if (!isGuardedRoute(path)) return { ...workspace, path }
+
+  try {
+    const tables = parseTableSql(workspace.tableSql)
+    return { ...workspace, tables, path }
+  } catch (error) {
+    window.history.replaceState({}, '', '/tables')
+    return {
+      ...workspace,
+      path: '/tables',
+      tableError: error instanceof Error ? error.message : 'The table SQL could not be applied.',
+    }
+  }
+}
+
+function normalizeRoute(pathname: string): AppRoute {
+  if (pathname === '/query' || pathname === '/visualization' || pathname === '/tables') return pathname
+  window.history.replaceState({}, '', '/tables')
+  return '/tables'
+}
+
+function isGuardedRoute(path: AppRoute) {
+  return path === '/query' || path === '/visualization'
+}
+
+function AppShell({
+  children,
+  path,
+  onNavigate,
+}: {
+  children: ReactNode
+  path: AppRoute
+  onNavigate: (path: AppRoute) => void
+}) {
   return (
     <main className="app-shell">
       <header className="app-topbar">
@@ -139,6 +211,17 @@ function AppShell({ children }: { children: ReactNode }) {
             <p className="brand-subtitle">Logical execution tutor</p>
           </div>
         </div>
+        <nav className="route-tabs" aria-label="Workflow">
+          <button type="button" className={path === '/tables' ? 'active' : ''} onClick={() => onNavigate('/tables')} aria-current={path === '/tables' ? 'page' : undefined}>
+            Tables
+          </button>
+          <button type="button" className={path === '/query' ? 'active' : ''} onClick={() => onNavigate('/query')} aria-current={path === '/query' ? 'page' : undefined}>
+            Query
+          </button>
+          <button type="button" className={path === '/visualization' ? 'active' : ''} onClick={() => onNavigate('/visualization')} aria-current={path === '/visualization' ? 'page' : undefined}>
+            Trace
+          </button>
+        </nav>
       </header>
       {children}
     </main>
@@ -369,18 +452,19 @@ function TableBuilder({
   tableError,
   onTableSqlChange,
   onApplyTableSql,
+  onContinue,
 }: {
   tables: Table[]
   tableSql: string
   tableError?: string
   onTableSqlChange: (value: string) => void
   onApplyTableSql: () => void
+  onContinue: () => void
 }) {
   return (
     <section className="table-builder" aria-label="Create table">
       <div className="section-heading-row">
         <div>
-          <p className="eyebrow">Tables</p>
           <h2>Create table</h2>
         </div>
       </div>
@@ -398,12 +482,26 @@ function TableBuilder({
         <button className="secondary-button" type="button" onClick={onApplyTableSql}>
           Create Tables
         </button>
+        <button className="primary-button" type="button" onClick={onContinue}>
+          Continue to Query
+        </button>
         {tableError ? <div className="error-box" role="alert">{tableError}</div> : null}
       </div>
       <div className="table-preview-list" aria-label="Created table previews">
         {tables.map((table) => <TablePreview table={table} key={table.name} />)}
       </div>
     </section>
+  )
+}
+
+function TableContext({ tables }: { tables: Table[] }) {
+  return (
+    <aside className="table-context" aria-label="Query page table context">
+      <h2>Tables</h2>
+      <div className="table-preview-list compact-preview-list">
+        {tables.map((table) => <TablePreview table={table} key={table.name} />)}
+      </div>
+    </aside>
   )
 }
 

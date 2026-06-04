@@ -33,6 +33,36 @@
   backdrop-filter: blur(14px);
 }
 
+.route-tabs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-muted);
+  padding: 3px;
+}
+
+.route-tabs button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.route-tabs button:hover:not(:disabled) {
+  transform: none;
+}
+
+.route-tabs .active {
+  background: var(--paper);
+  color: var(--accent-dark);
+  box-shadow: 0 1px 2px rgba(34, 31, 25, 0.08);
+}
+
 .brand-lockup {
   display: flex;
   min-width: 0;
@@ -90,6 +120,57 @@
   gap: 18px;
   background: var(--paper);
   padding: 24px;
+}
+
+.workflow-page {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - 65px);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.tables-route {
+  display: grid;
+  gap: 14px;
+}
+
+.query-route {
+  display: grid;
+  gap: 14px;
+}
+
+.query-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  align-items: start;
+  gap: 18px;
+}
+
+.compact-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.table-context {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  padding: 18px;
+}
+
+.table-context h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.compact-preview-list {
+  margin-top: 12px;
 }
 
 .authoring-pane-grid {
@@ -725,6 +806,10 @@ th.selected-column {
     grid-template-columns: 1fr;
   }
 
+  .query-page-grid {
+    grid-template-columns: 1fr;
+  }
+
   .authoring-pane-grid {
     grid-template-columns: 1fr;
   }
@@ -739,7 +824,16 @@ th.selected-column {
   .app-topbar {
     position: static;
     align-items: flex-start;
+    flex-direction: column;
     padding: 14px 16px;
+  }
+
+  .route-tabs {
+    width: 100%;
+  }
+
+  .route-tabs button {
+    flex: 1;
   }
 
   .brand-subtitle {
@@ -747,7 +841,8 @@ th.selected-column {
   }
 
   .build-pane,
-  .trace-pane {
+  .trace-pane,
+  .workflow-page {
     padding: 16px;
   }
 
