@@ -166,7 +166,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     await userEvent.click(screen.getByLabelText('Next step'))
 
-    expect(screen.getByRole('heading', { name: 'Pair sources' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Cross join' })).toBeInTheDocument()
     expect(screen.getAllByText('FROM')).toHaveLength(1)
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM friends AS friends, animals AS animals')
     expect(screen.getByLabelText('Active SQL clause')).not.toHaveTextContent('JOIN')

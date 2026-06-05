@@ -359,7 +359,7 @@ describe('executeQuery', () => {
     ])
   })
 
-  it('labels comma join pairing as a source-pairing operation without per-pair details', () => {
+  it('labels comma join pairing as a cross join without per-pair details', () => {
     const petTables: Table[] = [
       {
         name: 'friends',
@@ -385,7 +385,7 @@ describe('executeQuery', () => {
     )
     const pairStep = steps[1]
 
-    expect(pairStep.title).toBe('Pair sources')
+    expect(pairStep.title).toBe('Cross join')
     expect(pairStep.clause).toBe('FROM friends AS friends, animals AS animals')
     expect(pairStep.details).toBeUndefined()
   })

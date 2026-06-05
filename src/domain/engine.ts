@@ -65,7 +65,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     steps.push({
       id: 'join',
       kind: 'join',
-      title: isCommaJoin ? 'Pair sources' : 'JOIN',
+      title: isCommaJoin ? 'Cross join' : 'JOIN',
       clause: !isCommaJoin && ast.join.condition
         ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${ast.join.condition.label}`
         : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
