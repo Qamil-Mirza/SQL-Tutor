@@ -355,11 +355,11 @@ describe('executeQuery', () => {
       "WHERE u.tier = 'pro'",
       'SELECT u.name, u.tier',
       'LIMIT 2',
-      'Result',
+      undefined,
     ])
   })
 
-  it('labels comma join pairing as a FROM operation without per-pair details', () => {
+  it('labels comma join pairing as a source-pairing operation without per-pair details', () => {
     const petTables: Table[] = [
       {
         name: 'friends',
@@ -385,7 +385,7 @@ describe('executeQuery', () => {
     )
     const pairStep = steps[1]
 
-    expect(pairStep.title).toBe('FROM')
+    expect(pairStep.title).toBe('Pair sources')
     expect(pairStep.clause).toBe('FROM friends AS friends, animals AS animals')
     expect(pairStep.details).toBeUndefined()
   })

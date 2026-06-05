@@ -142,7 +142,7 @@ describe('App', () => {
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('SELECT u.name, u.tier')
   })
 
-  it('does not show a JOIN clause or pair bullets for comma joins', async () => {
+  it('does not show duplicate FROM or pair bullets for comma joins', async () => {
     render(<App />)
     await userEvent.clear(screen.getByLabelText('Table SQL'))
     await userEvent.type(
@@ -166,10 +166,24 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     await userEvent.click(screen.getByLabelText('Next step'))
 
-    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pair sources' })).toBeInTheDocument()
+    expect(screen.getAllByText('FROM')).toHaveLength(1)
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM friends AS friends, animals AS animals')
     expect(screen.getByLabelText('Active SQL clause')).not.toHaveTextContent('JOIN')
     expect(screen.queryByText(/paired with/)).not.toBeInTheDocument()
+  })
+
+  it('shows the final result without an active clause panel', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    while (!screen.queryByRole('heading', { name: 'Result' })) {
+      await userEvent.click(screen.getByLabelText('Next step'))
+    }
+
+    expect(screen.queryByLabelText('Active SQL clause')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Result' })).toBeInTheDocument()
   })
 
   it('renders self-join visualization', async () => {

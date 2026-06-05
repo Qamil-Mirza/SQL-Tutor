@@ -65,7 +65,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     steps.push({
       id: 'join',
       kind: 'join',
-      title: isCommaJoin ? 'FROM' : 'JOIN',
+      title: isCommaJoin ? 'Pair sources' : 'JOIN',
       clause: !isCommaJoin && ast.join.condition
         ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${ast.join.condition.label}`
         : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
@@ -200,7 +200,6 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     id: 'result',
     kind: 'result',
     title: 'Result',
-    clause: 'Result',
     explanation: 'This is the final result produced by the logical execution order.',
     after: rows,
     highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
