@@ -29,6 +29,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     id: 'from',
     kind: 'from',
     title: 'FROM',
+    clause: `FROM ${fromTable.name} AS ${ast.from.alias}${commaJoinTable ? `, ${commaJoinTable.name} AS ${ast.join!.alias}` : ''}`,
     explanation: commaJoinTable
       ? `Start with every row from ${fromTable.name} as ${ast.from.alias} and ${commaJoinTable.name} as ${ast.join!.alias}.`
       : `Start with every row from ${fromTable.name}, labeled as alias ${ast.from.alias}.`,
@@ -64,6 +65,9 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'join',
       kind: 'join',
       title: 'JOIN',
+      clause: ast.join.condition
+        ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${ast.join.condition.label}`
+        : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
       explanation: ast.join.condition
         ? `Pair rows from ${ast.from.alias} and ${ast.join.alias} when the ON condition is true.`
         : `Pair every row from ${ast.from.alias} with every row from ${ast.join.alias}.`,
@@ -85,6 +89,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
         id: ast.where.length === 1 ? 'where' : `where-${index + 1}`,
         kind: 'where',
         title: 'WHERE',
+        clause: `WHERE ${condition.label}`,
         explanation: 'Filter individual rows before grouping happens.',
         before,
         after: rows,
@@ -105,6 +110,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'group',
       kind: 'groupBy',
       title: 'GROUP BY',
+      clause: ast.groupBy.length ? `GROUP BY ${ast.groupBy.map((expression) => expression.label).join(', ')}` : 'GROUP BY all rows',
       explanation: ast.groupBy.length
         ? 'Bucket rows by the GROUP BY expressions before aggregate calculations.'
         : 'Treat all remaining rows as one group because aggregate functions are present.',
@@ -122,6 +128,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'having',
       kind: 'having',
       title: 'HAVING',
+      clause: `HAVING ${ast.having.map((condition) => condition.label).join(' AND ')}`,
       explanation: 'Filter groups after aggregates are available.',
       before,
       after: groups,
@@ -142,6 +149,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     id: 'select',
     kind: 'select',
     title: 'SELECT',
+    clause: `SELECT ${ast.select.map((item) => item.label).join(', ')}`,
     explanation: 'Project the requested expressions into the visible result columns.',
     before: beforeSelect,
     after: rows,
@@ -158,6 +166,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'order-by',
       kind: 'orderBy',
       title: 'ORDER BY',
+      clause: `ORDER BY ${ast.orderBy.map((item) => item.label).join(', ')}`,
       explanation: 'Sort the projected result rows before LIMIT is applied.',
       before,
       after: rows,
@@ -174,6 +183,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'limit',
       kind: 'limit',
       title: 'LIMIT',
+      clause: `LIMIT ${ast.limit}`,
       explanation: `Keep only the first ${ast.limit} row(s) after projection.`,
       before,
       after: markRemoved(before, rows),
@@ -189,6 +199,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     id: 'result',
     kind: 'result',
     title: 'Result',
+    clause: 'Result',
     explanation: 'This is the final result produced by the logical execution order.',
     after: rows,
     highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],

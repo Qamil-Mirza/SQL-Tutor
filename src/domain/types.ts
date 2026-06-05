@@ -109,6 +109,7 @@ export type ExecutionStep = {
   kind: StepKind
   title: string
   explanation: string
+  clause?: string
   before?: AliasedRow[] | Group[]
   after: AliasedRow[] | Group[]
   sources?: Array<{ label: string; rows: AliasedRow[] }>

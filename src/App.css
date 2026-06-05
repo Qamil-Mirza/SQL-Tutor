@@ -459,6 +459,13 @@ button:disabled {
   font-size: 13px;
 }
 
+.share-status {
+  margin: 10px 0 8px;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .error-box {
   margin-top: 14px;
   border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--danger-soft));
@@ -540,6 +547,56 @@ button:disabled {
   color: #554d42;
   padding: 13px 14px;
   line-height: 1.5;
+}
+
+.active-clause {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #191713;
+  padding: 12px;
+}
+
+.active-clause span {
+  color: #b9aca0;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.active-clause code {
+  color: #f8f1e8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.trace-state-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 4px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-muted);
+  padding: 4px;
+}
+
+.trace-state-toggle button {
+  min-height: 32px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.trace-state-toggle button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .detail-list {

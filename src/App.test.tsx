@@ -111,6 +111,37 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
   })
 
+  it('shows only one trace table state at a time with a before-after switch', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+    await userEvent.click(screen.getByLabelText('Next step'))
+
+    expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Before' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('heading', { name: 'Before' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'After' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'After' }))
+
+    expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('heading', { name: 'After' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Before' })).not.toBeInTheDocument()
+  })
+
+  it('shows the active SQL clause for each trace step', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM users AS u')
+    await userEvent.click(screen.getByLabelText('Next step'))
+    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent("WHERE u.tier = 'pro'")
+    await userEvent.click(screen.getByLabelText('Next step'))
+    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('SELECT u.name, u.tier')
+  })
+
   it('renders self-join visualization', async () => {
     render(<App />)
     await advanceToQueryPage()
@@ -301,6 +332,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     await userEvent.click(screen.getByLabelText('Next step'))
     await userEvent.click(screen.getByLabelText('Next step'))
+    await userEvent.click(screen.getByRole('button', { name: 'After' }))
     const selectedHeaders = screen.getAllByRole('columnheader').filter((header) => header.classList.contains('selected-column'))
     expect(selectedHeaders.map((header) => header.textContent)).toEqual(expect.arrayContaining(['u.name', 'u.tier']))
   })
@@ -316,6 +348,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     await userEvent.click(screen.getByLabelText('Next step'))
     await userEvent.click(screen.getByLabelText('Next step'))
+    await userEvent.click(screen.getByRole('button', { name: 'After' }))
 
     expect(screen.getByRole('heading', { name: 'GROUP BY' })).toBeInTheDocument()
     expect(screen.getAllByText('COUNT(*) = 3').length).toBeGreaterThan(0)
@@ -426,6 +459,31 @@ describe('App', () => {
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+  })
+
+  it('confirms when a new share link is created', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('New share link created')
+  })
+
+  it('starts shared links at the beginning even when created after visiting a later trace step', async () => {
+    const { unmount } = render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+    await userEvent.click(screen.getByLabelText('Next step'))
+    expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }))
+
+    const sharedLocation = new URL((screen.getByLabelText('Share link') as HTMLInputElement).value)
+    unmount()
+    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
+    render(<App />)
+
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
   })
 })

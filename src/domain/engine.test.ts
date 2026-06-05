@@ -344,6 +344,21 @@ describe('executeQuery', () => {
     ])
   })
 
+  it('adds the active SQL clause to trace steps', () => {
+    const steps = executeQuery(
+      parseQuery("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2"),
+      initialTables,
+    )
+
+    expect(steps.map((step) => step.clause)).toEqual([
+      'FROM users AS u',
+      "WHERE u.tier = 'pro'",
+      'SELECT u.name, u.tier',
+      'LIMIT 2',
+      'Result',
+    ])
+  })
+
   it('visualizes each AND condition as a separate where step', () => {
     const mentors: Table[] = [
       {

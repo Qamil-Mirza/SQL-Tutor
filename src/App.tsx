@@ -41,6 +41,7 @@ function App() {
   const [steps, setSteps] = useState<ExecutionStep[]>(initialResult.steps)
   const [isSharedSession] = useState(initialState.isSharedSession)
   const [shareUrl, setShareUrl] = useState('')
+  const [shareStatus, setShareStatus] = useState('')
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
@@ -84,9 +85,10 @@ function App() {
   function handleShare() {
     const url = createShareUrl({
       origin: window.location.origin,
-      snapshot: { version: 1, tableSql, sql, stepIndex },
+      snapshot: { version: 1, tableSql, sql },
     })
     setShareUrl(url)
+    setShareStatus('New share link created')
     void window.navigator.clipboard?.writeText(url)
   }
 
@@ -134,7 +136,7 @@ function App() {
             />
           </div>
           <section className="trace-card visualization-panel" aria-label="Execution visualization">
-            {activeStep ? <VisualizationPanel step={activeStep} /> : <EmptyState />}
+            {activeStep ? <VisualizationPanel key={activeStep.id} step={activeStep} /> : <EmptyState />}
           </section>
         </section>
       </AppShell>
@@ -159,6 +161,7 @@ function App() {
               onRun={() => handleRun()}
               onShare={handleShare}
               shareUrl={shareUrl}
+              shareStatus={shareStatus}
             />
             <TableContext tables={tables} />
           </div>
@@ -209,7 +212,6 @@ function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): Ini
         tableSql: sharedSnapshot.tableSql,
         sql: sharedSnapshot.sql,
         path: '/visualization',
-        stepIndex: sharedSnapshot.stepIndex,
         isSharedSession: true,
       }
     }
@@ -357,6 +359,7 @@ function QueryEditor({
   onRun,
   onShare,
   shareUrl,
+  shareStatus,
 }: {
   sql: string
   error?: string
@@ -364,6 +367,7 @@ function QueryEditor({
   onRun: () => void
   onShare: () => void
   shareUrl: string
+  shareStatus: string
 }) {
   const editorRows = rowsForQuery(sql)
   return (
@@ -389,16 +393,17 @@ function QueryEditor({
       <button className="secondary-button" type="button" onClick={onShare}>
         Share
       </button>
-      <ShareLink value={shareUrl} />
+      <ShareLink value={shareUrl} status={shareStatus} />
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
 }
 
-function ShareLink({ value }: { value: string }) {
+function ShareLink({ value, status }: { value: string; status: string }) {
   if (!value) return null
   return (
     <div className="share-link-panel">
+      {status ? <p className="share-status" role="status">{status}</p> : null}
       <label className="field-label" htmlFor="share-link">
         Share link
       </label>
@@ -413,10 +418,24 @@ function rowsForQuery(sql: string) {
 }
 
 function VisualizationPanel({ step }: { step: ExecutionStep }) {
+  const hasBefore = Boolean(step.before)
+  const [view, setView] = useState<'before' | 'after'>(hasBefore ? 'before' : 'after')
+
+  const beforeLabel = step.display?.beforeLabel ?? 'Before'
+  const afterLabel = step.display?.afterLabel ?? 'After'
+  const activeLabel = view === 'before' ? beforeLabel : afterLabel
+  const activeData = view === 'before' ? step.before : step.after
+
   return (
     <article>
       <p className="eyebrow">Current step</p>
       <h2>{step.title}</h2>
+      {step.clause ? (
+        <div className="active-clause" aria-label="Active SQL clause">
+          <span>Clause</span>
+          <code>{step.clause}</code>
+        </div>
+      ) : null}
       <p className="explanation">{step.explanation}</p>
       {step.details?.length ? (
         <ul className="detail-list">
@@ -426,14 +445,14 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
         </ul>
       ) : null}
       {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
-      {step.before ? (
-        <>
-          <h3>{step.display?.beforeLabel ?? 'Before'}</h3>
-          <DataView data={step.before} highlights={step.highlights} />
-        </>
+      {hasBefore ? (
+        <div className="trace-state-toggle" aria-label="Trace table state">
+          <button type="button" aria-pressed={view === 'before'} onClick={() => setView('before')}>{beforeLabel}</button>
+          <button type="button" aria-pressed={view === 'after'} onClick={() => setView('after')}>{afterLabel}</button>
+        </div>
       ) : null}
-      <h3>{step.display?.afterLabel ?? 'After'}</h3>
-      {step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={step.after} highlights={step.highlights} />}
+      <h3>{activeLabel}</h3>
+      {view === 'after' && step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
     </article>
   )
 }
