@@ -81,7 +81,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
         title: 'WHERE',
         explanation: 'Filter individual rows before grouping happens.',
         before,
-        after: markRemoved(before, rows),
+        after: rows,
         details: [condition.label],
         highlights: [
           { kind: 'kept', rowIds: rows.map((row) => row.id) },

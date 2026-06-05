@@ -3,6 +3,7 @@ import './App.css'
 import { executeQuery } from './domain/engine'
 import { parseQuery } from './domain/parser'
 import { initialTables, starterQuery } from './domain/samples'
+import { createShareUrl, readShareSnapshot } from './domain/shareSnapshot'
 import { parseTableSql, serializeTables } from './domain/tableSql'
 import type { AliasedRow, ExecutionStep, Group, Highlight, Scalar, Table } from './domain/types'
 
@@ -20,23 +21,32 @@ type AppRoute = '/tables' | '/query' | '/visualization'
 type InitialAppState = WorkspaceSnapshot & {
   path: AppRoute
   tableError?: string
+  queryError?: string
+  stepIndex?: number
+  isSharedSession: boolean
 }
 
 function App() {
   const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
+  const initialResult = useMemo(() => run(initialState.sql, initialState.tables), [initialState.sql, initialState.tables])
   const [path, setPath] = useState<AppRoute>(initialState.path)
   const [tables, setTables] = useState<Table[]>(initialState.tables)
   const [tableSql, setTableSql] = useState(initialState.tableSql)
   const [sql, setSql] = useState(initialState.sql)
-  const [stepIndex, setStepIndex] = useState(0)
-  const [error, setError] = useState<string>()
+  const [stepIndex, setStepIndex] = useState(() => (
+    Math.min(initialState.stepIndex ?? 0, Math.max(0, initialResult.steps.length - 1))
+  ))
+  const [error, setError] = useState<string | undefined>(initialState.queryError ?? initialResult.error)
   const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
-  const [steps, setSteps] = useState<ExecutionStep[]>(() => run(initialState.sql, initialState.tables).steps)
+  const [steps, setSteps] = useState<ExecutionStep[]>(initialResult.steps)
+  const [isSharedSession] = useState(initialState.isSharedSession)
+  const [shareUrl, setShareUrl] = useState('')
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
+    if (isSharedSession) return
     window.localStorage.setItem(workspaceStorageKey, JSON.stringify({ tables, tableSql, sql }))
-  }, [tables, tableSql, sql])
+  }, [tables, tableSql, sql, isSharedSession])
 
   useEffect(() => {
     function handlePopState() {
@@ -69,6 +79,15 @@ function App() {
     setSteps(result.steps)
     setStepIndex(0)
     if (!result.error) navigate('/visualization')
+  }
+
+  function handleShare() {
+    const url = createShareUrl({
+      origin: window.location.origin,
+      snapshot: { version: 1, tableSql, sql, stepIndex },
+    })
+    setShareUrl(url)
+    void window.navigator.clipboard?.writeText(url)
   }
 
   function applyTableSql() {
@@ -138,6 +157,8 @@ function App() {
               error={error}
               onSqlChange={setSql}
               onRun={() => handleRun()}
+              onShare={handleShare}
+              shareUrl={shareUrl}
             />
             <TableContext tables={tables} />
           </div>
@@ -166,18 +187,55 @@ function App() {
 }
 
 function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): InitialAppState {
+  try {
+    const sharedSnapshot = readShareSnapshot(window.location.search)
+    if (sharedSnapshot) {
+      const tables = parseTableSql(sharedSnapshot.tableSql)
+      const result = run(sharedSnapshot.sql, tables)
+      if (result.error) {
+        window.history.replaceState({}, '', '/query')
+        return {
+          tables,
+          tableSql: sharedSnapshot.tableSql,
+          sql: sharedSnapshot.sql,
+          path: '/query',
+          queryError: result.error,
+          isSharedSession: true,
+        }
+      }
+      window.history.replaceState({}, '', `/visualization${window.location.search}`)
+      return {
+        tables,
+        tableSql: sharedSnapshot.tableSql,
+        sql: sharedSnapshot.sql,
+        path: '/visualization',
+        stepIndex: sharedSnapshot.stepIndex,
+        isSharedSession: true,
+      }
+    }
+  } catch (error) {
+    window.history.replaceState({}, '', '/tables')
+    return {
+      ...workspace,
+      path: '/tables',
+      tableError: error instanceof Error ? error.message : 'The shared link is invalid.',
+      isSharedSession: false,
+    }
+  }
+
   const path = normalizeRoute(pathname)
-  if (!isGuardedRoute(path)) return { ...workspace, path }
+  if (!isGuardedRoute(path)) return { ...workspace, path, isSharedSession: false }
 
   try {
     const tables = parseTableSql(workspace.tableSql)
-    return { ...workspace, tables, path }
+    return { ...workspace, tables, path, isSharedSession: false }
   } catch (error) {
     window.history.replaceState({}, '', '/tables')
     return {
       ...workspace,
       path: '/tables',
       tableError: error instanceof Error ? error.message : 'The table SQL could not be applied.',
+      isSharedSession: false,
     }
   }
 }
@@ -297,11 +355,15 @@ function QueryEditor({
   error,
   onSqlChange,
   onRun,
+  onShare,
+  shareUrl,
 }: {
   sql: string
   error?: string
   onSqlChange: (value: string) => void
   onRun: () => void
+  onShare: () => void
+  shareUrl: string
 }) {
   const editorRows = rowsForQuery(sql)
   return (
@@ -324,8 +386,24 @@ function QueryEditor({
       <button className="primary-button" type="button" onClick={onRun}>
         Run Query
       </button>
+      <button className="secondary-button" type="button" onClick={onShare}>
+        Share
+      </button>
+      <ShareLink value={shareUrl} />
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
+  )
+}
+
+function ShareLink({ value }: { value: string }) {
+  if (!value) return null
+  return (
+    <div className="share-link-panel">
+      <label className="field-label" htmlFor="share-link">
+        Share link
+      </label>
+      <input id="share-link" readOnly value={value} />
+    </div>
   )
 }
 

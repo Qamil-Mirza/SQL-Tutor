@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { executeQuery } from './engine'
 import { parseQuery } from './parser'
 import { initialTables } from './samples'
-import type { Group, Table } from './types'
+import type { AliasedRow, Group, Table } from './types'
 
 function rowsFor(sql: string) {
   const steps = executeQuery(parseQuery(sql), initialTables)
@@ -36,6 +36,13 @@ describe('executeQuery', () => {
     const rows = rowsFor('SELECT e.name AS employee, m.name AS manager FROM employees AS e JOIN employees AS m ON e.manager_id = m.id')
     expect(rows).toHaveLength(3)
     expect(rows[0].values.manager).toBe('Priya')
+  })
+
+  it('supports self joins with aliases that omit AS', () => {
+    const rows = rowsFor('SELECT employee.name, manager.name FROM employees employee JOIN employees manager ON employee.manager_id = manager.id')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].values['employee.name']).toBe('Mateo')
+    expect(rows[0].values['manager.name']).toBe('Priya')
   })
 
   it('groups, filters groups with having, and projects aggregates', () => {
@@ -112,6 +119,38 @@ describe('executeQuery', () => {
     expect(steps.map((step) => step.kind)).toContain('orderBy')
     expect(rows).toHaveLength(1)
     expect(rows[0].values['u.Top_Genre']).toBe('Afrobeats')
+  })
+
+  it('executes comma joins that use table names as implicit aliases', () => {
+    const petTables: Table[] = [
+      {
+        name: 'friends',
+        columns: ['name', 'animal'],
+        rows: [
+          { name: 'Ada', animal: 'cat' },
+          { name: 'Ben', animal: 'dog' },
+          { name: 'Chen', animal: 'dog' },
+        ],
+      },
+      {
+        name: 'animals',
+        columns: ['animal', 'sound'],
+        rows: [
+          { animal: 'cat', sound: 'meow' },
+          { animal: 'dog', sound: 'woof' },
+        ],
+      },
+    ]
+
+    const rows = executeQuery(
+      parseQuery('SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC'),
+      petTables,
+    ).at(-1)!.after
+
+    expect(rows.map((row) => row.values)).toEqual([
+      { 'animals.sound': 'meow', 'COUNT(*)': 1 },
+      { 'animals.sound': 'woof', 'COUNT(*)': 2 },
+    ])
   })
 
   it('adds sort keys and rank movement to order by steps', () => {
@@ -306,9 +345,11 @@ describe('executeQuery', () => {
     expect(whereSteps.map((step) => step.id)).toEqual(['where-1', 'where-2'])
     expect(whereSteps.map((step) => step.details)).toEqual([['m1.name > m2.name'], ['m1.language = m2.language']])
     expect(whereSteps[0].before).toHaveLength(16)
-    expect(whereSteps[0].after).toHaveLength(16)
+    expect(whereSteps[0].after).toHaveLength(6)
     expect(whereSteps[1].before).toHaveLength(6)
-    expect(whereSteps[1].after).toHaveLength(6)
+    expect(whereSteps[1].after).toHaveLength(2)
+    const afterRows = whereSteps.flatMap((step) => step.after as AliasedRow[])
+    expect(afterRows.some((row) => row.id.includes('__removed'))).toBe(false)
     expect(steps.at(-1)!.after).toHaveLength(2)
   })
 })

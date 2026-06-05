@@ -19,6 +19,28 @@ describe('parseQuery', () => {
     expect(ast.having).toHaveLength(1)
   })
 
+  it('parses table aliases without AS', () => {
+    const ast = parseQuery(
+      'SELECT employee.name, manager.name FROM employees employee JOIN employees manager ON employee.manager_id = manager.id',
+    )
+    expect(ast.from).toEqual({ tableName: 'employees', alias: 'employee' })
+    expect(ast.join).toEqual({
+      tableName: 'employees',
+      alias: 'manager',
+      condition: {
+        left: { type: 'column', tableAlias: 'employee', column: 'manager_id', label: 'employee.manager_id' },
+        operator: '=',
+        right: { type: 'column', tableAlias: 'manager', column: 'id', label: 'manager.id' },
+        label: 'employee.manager_id = manager.id',
+      },
+      syntax: 'explicit',
+    })
+  })
+
+  it('still requires a joined table alias when the same table name would be reused', () => {
+    expect(() => parseQuery('SELECT employees.name FROM employees JOIN employees ON employees.manager_id = employees.id')).toThrow(/Joined tables must use/)
+  })
+
   it('parses order by expressions and directions', () => {
     const ast = parseQuery('SELECT u.tier FROM users AS u GROUP BY u.tier ORDER BY COUNT(*) DESC, u.tier ASC LIMIT 1')
     expect(ast.orderBy).toEqual([
@@ -57,6 +79,21 @@ describe('parseQuery', () => {
     expect(ast.from).toEqual({ tableName: 'mentors', alias: 'm1' })
     expect(ast.join).toEqual({ tableName: 'mentors', alias: 'm2', syntax: 'comma' })
     expect(ast.where).toHaveLength(1)
+  })
+
+  it('parses comma joins that use table names as implicit aliases', () => {
+    const ast = parseQuery(
+      'SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC',
+    )
+    expect(ast.from).toEqual({ tableName: 'friends', alias: 'friends' })
+    expect(ast.join).toEqual({ tableName: 'animals', alias: 'animals', syntax: 'comma' })
+    expect(ast.where[0].label).toBe('friends.animal = animals.animal')
+    expect(ast.groupBy).toHaveLength(1)
+    expect(ast.orderBy[0].label).toBe('COUNT(*) ASC')
+  })
+
+  it('requires comma-joined self joins to use aliases', () => {
+    expect(() => parseQuery('SELECT mentors.name FROM mentors, mentors WHERE mentors.name = mentors.name')).toThrow(/Joined tables must use/)
   })
 
   it('parses double-quoted string literals in conditions', () => {
