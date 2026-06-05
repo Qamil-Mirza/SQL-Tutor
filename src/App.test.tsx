@@ -111,6 +111,28 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
   })
 
+  it('uses the brand lockup to return home to table creation', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    expect(window.location.pathname).toBe('/query')
+
+    await userEvent.click(screen.getByRole('button', { name: 'CSM C88C SQL Visualizer home' }))
+
+    expect(window.location.pathname).toBe('/tables')
+    expect(screen.getByLabelText('Table creation page')).toBeInTheDocument()
+  })
+
+  it('separates the trace title, back action, step rail, and centered step controls', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    expect(screen.getByLabelText('Trace title and back action')).toContainElement(screen.getByRole('heading', { name: 'Trace' }))
+    expect(screen.getByRole('button', { name: 'Back to query' })).toHaveClass('back-button')
+    expect(within(screen.getByLabelText('Trace step rail')).getByText('FROM')).toBeInTheDocument()
+    expect(screen.getByLabelText('Step controls')).toHaveClass('centered-step-controls')
+  })
+
   it('shows only one trace table state at a time with a before-after switch', async () => {
     render(<App />)
     await advanceToQueryPage()

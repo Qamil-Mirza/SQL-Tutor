@@ -121,12 +121,12 @@ function App() {
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
           <div className="trace-card trace-nav-card">
-            <div>
+            <div className="trace-title-actions" aria-label="Trace title and back action">
               <h1 id="trace-heading">Trace</h1>
+              <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
+                Back to query
+              </button>
             </div>
-            <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
-              Back to query
-            </button>
             <StepNavigator
               steps={steps}
               stepIndex={stepIndex}
@@ -264,13 +264,13 @@ function AppShell({
   return (
     <main className="app-shell">
       <header className="app-topbar">
-        <div className="brand-lockup" aria-label="CSM C88C SQL Visualizer">
+        <button className="brand-lockup" type="button" onClick={() => onNavigate('/tables')} aria-label="CSM C88C SQL Visualizer home">
           <span className="brand-mark" aria-hidden="true">SQL</span>
-          <div>
-            <p className="brand-title">CSM C88C SQL Visualizer</p>
-            <p className="brand-subtitle">Logical execution tutor</p>
-          </div>
-        </div>
+          <span className="brand-copy">
+            <span className="brand-title">CSM C88C SQL Visualizer</span>
+            <span className="brand-subtitle">Logical execution tutor</span>
+          </span>
+        </button>
         <nav className="route-tabs" aria-label="Workflow">
           <button type="button" className={path === '/tables' ? 'active' : ''} onClick={() => onNavigate('/tables')} aria-current={path === '/tables' ? 'page' : undefined}>
             Tables
@@ -329,7 +329,7 @@ function StepNavigator({
 }) {
   return (
     <>
-      <div className="step-controls" aria-label="Step controls">
+      <div className="step-controls centered-step-controls" aria-label="Step controls">
         <button className="icon-button" type="button" onClick={onPrevious} disabled={stepIndex === 0 || steps.length === 0} aria-label="Previous step">
           <span aria-hidden="true">←</span>
         </button>
@@ -340,14 +340,16 @@ function StepNavigator({
           <span aria-hidden="true">→</span>
         </button>
       </div>
-      <ol className="step-list">
-        {steps.map((step, index) => (
-          <li key={step.id} className={index === stepIndex ? 'active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
-            <span>{index + 1}</span>
-            {step.title}
-          </li>
-        ))}
-      </ol>
+      <div className="step-rail" aria-label="Trace step rail">
+        <ol className="step-list">
+          {steps.map((step, index) => (
+            <li key={step.id} className={index === stepIndex ? 'active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
+              <span>{index + 1}</span>
+              {step.title}
+            </li>
+          ))}
+        </ol>
+      </div>
     </>
   )
 }

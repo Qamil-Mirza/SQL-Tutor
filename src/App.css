@@ -68,6 +68,20 @@
   min-width: 0;
   align-items: center;
   gap: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.brand-lockup:hover:not(:disabled) {
+  transform: none;
+}
+
+.brand-lockup:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  outline-offset: 4px;
 }
 
 .brand-mark {
@@ -81,6 +95,11 @@
   color: #ffffff;
   font-size: 11px;
   font-weight: 900;
+}
+
+.brand-copy {
+  display: grid;
+  min-width: 0;
 }
 
 .brand-title,
@@ -269,6 +288,16 @@
 
 .trace-card {
   padding: 18px;
+}
+
+.trace-nav-card {
+  display: grid;
+  gap: 18px;
+}
+
+.trace-title-actions {
+  display: grid;
+  justify-items: start;
 }
 
 .visualization-panel {
@@ -481,7 +510,10 @@ button:disabled {
   grid-template-columns: 42px minmax(84px, 120px) 42px;
   gap: 8px;
   max-width: 228px;
-  margin-top: 14px;
+}
+
+.centered-step-controls {
+  justify-self: center;
 }
 
 .icon-button,
@@ -492,15 +524,28 @@ button:disabled {
 
 .step-list {
   display: flex;
-  gap: 8px;
+  position: relative;
+  justify-content: center;
+  gap: 12px;
   list-style: none;
-  margin: 14px 0 0;
-  padding: 0 0 2px;
+  margin: 0;
+  padding: 6px 0;
   overflow-x: auto;
+}
+
+.step-list::before {
+  content: "";
+  position: absolute;
+  top: 23px;
+  right: 12px;
+  left: 12px;
+  height: 2px;
+  background: var(--line-strong);
 }
 
 .step-list li {
   display: flex;
+  position: relative;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -514,6 +559,12 @@ button:disabled {
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.step-rail {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 2px;
 }
 
 .step-list span {
