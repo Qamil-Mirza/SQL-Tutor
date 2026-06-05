@@ -111,6 +111,11 @@ export type ExecutionStep = {
   explanation: string
   before?: AliasedRow[] | Group[]
   after: AliasedRow[] | Group[]
+  sources?: Array<{ label: string; rows: AliasedRow[] }>
+  display?: {
+    beforeLabel?: string
+    afterLabel?: string
+  }
   details?: string[]
   highlights: Highlight[]
   sortSummaries?: SortSummary[]

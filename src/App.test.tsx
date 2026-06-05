@@ -196,6 +196,26 @@ describe('App', () => {
     expect(screen.getAllByText('Notepad++').length).toBeGreaterThan(0)
   })
 
+  it('shows both loaded sources on the FROM step for comma joins', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      "CREATE TABLE mentors (name, language);{enter}INSERT INTO mentors VALUES ('Chi', 'Java');{enter}INSERT INTO mentors VALUES ('Kaitlyn', 'Java');",
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT m1.name, m2.name FROM mentors AS m1, mentors AS m2 WHERE m1.name > m2.name')
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'mentors as m1' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'mentors as m2' })).toBeInTheDocument()
+    expect(screen.getAllByText('Chi').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Kaitlyn').length).toBeGreaterThanOrEqual(2)
+  })
+
   it('does not run the query when applying table SQL', async () => {
     render(<App />)
     expect(screen.getAllByText('Ada').length).toBeGreaterThan(0)

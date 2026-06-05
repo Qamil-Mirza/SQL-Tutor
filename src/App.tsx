@@ -428,13 +428,26 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
       {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
       {step.before ? (
         <>
-          <h3>Before</h3>
+          <h3>{step.display?.beforeLabel ?? 'Before'}</h3>
           <DataView data={step.before} highlights={step.highlights} />
         </>
       ) : null}
-      <h3>After</h3>
-      <DataView data={step.after} highlights={step.highlights} />
+      <h3>{step.display?.afterLabel ?? 'After'}</h3>
+      {step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={step.after} highlights={step.highlights} />}
     </article>
+  )
+}
+
+function SourceDataView({ sources, highlights }: { sources: NonNullable<ExecutionStep['sources']>; highlights: Highlight[] }) {
+  return (
+    <div className="source-grid">
+      {sources.map((source) => (
+        <section className="source-panel" key={source.label} aria-label={`${source.label} source rows`}>
+          <h4>{source.label}</h4>
+          <TableView rows={source.rows} highlights={highlights} />
+        </section>
+      ))}
+    </div>
   )
 }
 

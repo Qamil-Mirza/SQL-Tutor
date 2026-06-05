@@ -24,6 +24,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
   const fromTable = requireTable(tables, ast.from.tableName)
   const commaJoinTable = ast.join?.syntax === 'comma' ? requireTable(tables, ast.join.tableName) : undefined
   let rows = aliasRows(fromTable, ast.from.alias)
+  const rightSourceRows = commaJoinTable ? aliasRows(commaJoinTable, ast.join!.alias) : undefined
   steps.push({
     id: 'from',
     kind: 'from',
@@ -32,6 +33,11 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       ? `Start with every row from ${fromTable.name} as ${ast.from.alias} and ${commaJoinTable.name} as ${ast.join!.alias}.`
       : `Start with every row from ${fromTable.name}, labeled as alias ${ast.from.alias}.`,
     after: rows,
+    sources: [
+      { label: `${fromTable.name} as ${ast.from.alias}`, rows },
+      ...(commaJoinTable && rightSourceRows ? [{ label: `${commaJoinTable.name} as ${ast.join!.alias}`, rows: rightSourceRows }] : []),
+    ],
+    display: { afterLabel: 'Load in' },
     details: commaJoinTable
       ? [`${rows.length} row(s) from ${ast.from.alias}.`, `${commaJoinTable.rows.length} row(s) from ${ast.join!.alias}.`]
       : [`${rows.length} source rows are now available.`],
