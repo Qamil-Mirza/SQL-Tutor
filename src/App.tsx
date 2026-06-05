@@ -437,13 +437,6 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
         </div>
       ) : null}
       <p className="explanation">{step.explanation}</p>
-      {step.details?.length ? (
-        <ul className="detail-list">
-          {step.details.slice(0, 6).map((detail) => (
-            <li key={detail}>{detail}</li>
-          ))}
-        </ul>
-      ) : null}
       {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
       {hasBefore ? (
         <div className="trace-state-toggle" aria-label="Trace table state">

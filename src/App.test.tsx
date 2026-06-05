@@ -142,6 +142,31 @@ describe('App', () => {
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('SELECT u.name, u.tier')
   })
 
+  it('does not render trace detail bullets', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      [
+        'CREATE TABLE friends (name, animal);',
+        "INSERT INTO friends VALUES ('Ada', 'cat');",
+        "INSERT INTO friends VALUES ('Ben', 'dog');",
+        'CREATE TABLE animals (animal, sound);',
+        "INSERT INTO animals VALUES ('cat', 'meow');",
+        "INSERT INTO animals VALUES ('dog', 'woof');",
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT animals.sound FROM friends, animals WHERE friends.animal = animals.animal')
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    expect(screen.queryByText('2 row(s) from friends.')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 row(s) from animals.')).not.toBeInTheDocument()
+    expect(document.querySelector('.detail-list')).not.toBeInTheDocument()
+  })
+
   it('does not show duplicate FROM or pair bullets for comma joins', async () => {
     render(<App />)
     await userEvent.clear(screen.getByLabelText('Table SQL'))
@@ -195,7 +220,8 @@ describe('App', () => {
     expect(window.location.pathname).toBe('/visualization')
     expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
     await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getAllByText(/matched/)).toHaveLength(3)
+    expect(screen.getByRole('heading', { name: 'JOIN' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('JOIN employees AS m ON e.manager_id = m.id')
   })
 
   it('shows friendly errors', async () => {
