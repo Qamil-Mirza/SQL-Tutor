@@ -539,13 +539,9 @@ button:disabled {
   color: var(--accent-dark);
 }
 
-.explanation {
-  margin-top: 10px;
-  margin-bottom: 16px;
-  border-radius: 10px;
-  background: var(--paper-muted);
+.trace-comment {
+  margin: 10px 0 12px;
   color: #554d42;
-  padding: 13px 14px;
   line-height: 1.5;
 }
 
@@ -582,6 +578,19 @@ button:disabled {
   border-radius: 10px;
   background: var(--paper-muted);
   padding: 4px;
+}
+
+.centered-toggle {
+  justify-self: center;
+}
+
+.trace-table-section {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
 }
 
 .trace-state-toggle button {
@@ -697,6 +706,11 @@ h3 {
   background: var(--paper);
 }
 
+.trace-table {
+  display: grid;
+  min-width: 0;
+}
+
 .table-preview-list {
   display: grid;
   min-width: 0;
@@ -742,10 +756,18 @@ h3 {
 
 .pagination-controls {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 10px;
   overflow: hidden;
+}
+
+.trace-pagination-controls span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .pagination-controls button {

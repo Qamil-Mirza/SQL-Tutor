@@ -430,22 +430,24 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
     <article>
       <p className="eyebrow">Current step</p>
       <h2>{step.title}</h2>
+      <p className="trace-comment">{step.explanation}</p>
       {step.clause ? (
         <div className="active-clause" aria-label="Active SQL clause">
           <span>Clause</span>
           <code>{step.clause}</code>
         </div>
       ) : null}
-      <p className="explanation">{step.explanation}</p>
       {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
-      {hasBefore ? (
-        <div className="trace-state-toggle" aria-label="Trace table state">
-          <button type="button" aria-pressed={view === 'before'} onClick={() => setView('before')}>{beforeLabel}</button>
-          <button type="button" aria-pressed={view === 'after'} onClick={() => setView('after')}>{afterLabel}</button>
-        </div>
-      ) : null}
-      <h3>{activeLabel}</h3>
-      {view === 'after' && step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
+      <section className="trace-table-section" aria-label="Trace table state">
+        {hasBefore ? (
+          <div className="trace-state-toggle centered-toggle" aria-label="Trace table state selector">
+            <button type="button" aria-pressed={view === 'before'} onClick={() => setView('before')}>{beforeLabel}</button>
+            <button type="button" aria-pressed={view === 'after'} onClick={() => setView('after')}>{afterLabel}</button>
+          </div>
+        ) : null}
+        <h3>{activeLabel}</h3>
+        {view === 'after' && step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
+      </section>
     </article>
   )
 }
@@ -490,31 +492,53 @@ function DataView({ data, highlights = [] }: { data: AliasedRow[] | Group[]; hig
 }
 
 function TableView({ rows, highlights = [] }: { rows: AliasedRow[]; highlights?: Highlight[] }) {
+  const [page, setPage] = useState(0)
   const columns = useMemo(() => [...new Set(rows.flatMap((row) => Object.keys(row.values)))], [rows])
   const removedRows = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.rowIds ?? [])), [highlights])
   const selectedColumns = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'selected').flatMap((highlight) => highlight.columnKeys ?? [])), [highlights])
+  const pageCount = Math.max(1, Math.ceil(rows.length / previewPageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * previewPageSize
+  const visibleRows = rows.slice(pageStart, pageStart + previewPageSize)
+  const rangeStart = rows.length ? pageStart + 1 : 0
+  const rangeEnd = Math.min(rows.length, pageStart + visibleRows.length)
+  const shouldPaginate = rows.length > previewPageSize
+
   return (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>row</th>
-            {columns.map((column) => (
-              <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
-              <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
+    <div className="trace-table">
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>row</th>
               {columns.map((column) => (
-                <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
+                <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => (
+              <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
+                <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
+                {columns.map((column) => (
+                  <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {shouldPaginate ? (
+        <div className="pagination-controls trace-pagination-controls">
+          <span>Rows {rangeStart}-{rangeEnd} of {rows.length}</span>
+          <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0} aria-label="Previous trace table page">
+            Previous
+          </button>
+          <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next trace table page">
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

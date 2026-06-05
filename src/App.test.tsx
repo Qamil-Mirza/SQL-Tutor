@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
@@ -118,6 +118,8 @@ describe('App', () => {
     await userEvent.click(screen.getByLabelText('Next step'))
 
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Trace table state' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Trace table state selector')).toHaveClass('centered-toggle')
     expect(screen.getByRole('button', { name: 'Before' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('heading', { name: 'Before' })).toBeInTheDocument()
@@ -128,6 +130,19 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('heading', { name: 'After' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Before' })).not.toBeInTheDocument()
+  })
+
+  it('shows the trace explanation as plain text before the active clause', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    const explanation = screen.getByText('Start with every row from users, labeled as alias u.')
+    const clause = screen.getByLabelText('Active SQL clause')
+
+    expect(explanation).toHaveClass('trace-comment')
+    expect(explanation).not.toHaveClass('explanation')
+    expect(explanation.compareDocumentPosition(clause) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows the active SQL clause for each trace step', async () => {
@@ -196,6 +211,39 @@ describe('App', () => {
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM friends AS friends, animals AS animals')
     expect(screen.getByLabelText('Active SQL clause')).not.toHaveTextContent('JOIN')
     expect(screen.queryByText(/paired with/)).not.toBeInTheDocument()
+  })
+
+  it('paginates trace tables after five rows', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      [
+        'CREATE TABLE numbers (id, label);',
+        "INSERT INTO numbers VALUES (1, 'one');",
+        "INSERT INTO numbers VALUES (2, 'two');",
+        "INSERT INTO numbers VALUES (3, 'three');",
+        "INSERT INTO numbers VALUES (4, 'four');",
+        "INSERT INTO numbers VALUES (5, 'five');",
+        "INSERT INTO numbers VALUES (6, 'six');",
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT numbers.id, numbers.label FROM numbers')
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    const stateSection = screen.getByRole('region', { name: 'Trace table state' })
+    expect(within(stateSection).getByText('one')).toBeInTheDocument()
+    expect(within(stateSection).queryByText('six')).not.toBeInTheDocument()
+    expect(within(stateSection).getByText('Rows 1-5 of 6')).toBeInTheDocument()
+
+    await userEvent.click(within(stateSection).getByRole('button', { name: 'Next trace table page' }))
+
+    expect(within(stateSection).getByText('six')).toBeInTheDocument()
+    expect(within(stateSection).queryByText('one')).not.toBeInTheDocument()
+    expect(within(stateSection).getByText('Rows 6-6 of 6')).toBeInTheDocument()
   })
 
   it('shows the final result without an active clause panel', async () => {
