@@ -359,6 +359,37 @@ describe('executeQuery', () => {
     ])
   })
 
+  it('labels comma join pairing as a FROM operation without per-pair details', () => {
+    const petTables: Table[] = [
+      {
+        name: 'friends',
+        columns: ['name', 'animal'],
+        rows: [
+          { name: 'Ada', animal: 'cat' },
+          { name: 'Ben', animal: 'dog' },
+        ],
+      },
+      {
+        name: 'animals',
+        columns: ['animal', 'sound'],
+        rows: [
+          { animal: 'cat', sound: 'meow' },
+          { animal: 'dog', sound: 'woof' },
+        ],
+      },
+    ]
+
+    const steps = executeQuery(
+      parseQuery('SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC'),
+      petTables,
+    )
+    const pairStep = steps[1]
+
+    expect(pairStep.title).toBe('FROM')
+    expect(pairStep.clause).toBe('FROM friends AS friends, animals AS animals')
+    expect(pairStep.details).toBeUndefined()
+  })
+
   it('visualizes each AND condition as a separate where step', () => {
     const mentors: Table[] = [
       {

@@ -142,6 +142,36 @@ describe('App', () => {
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('SELECT u.name, u.tier')
   })
 
+  it('does not show a JOIN clause or pair bullets for comma joins', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      [
+        'CREATE TABLE friends (name, animal);',
+        "INSERT INTO friends VALUES ('Ada', 'cat');",
+        "INSERT INTO friends VALUES ('Ben', 'dog');",
+        'CREATE TABLE animals (animal, sound);',
+        "INSERT INTO animals VALUES ('cat', 'meow');",
+        "INSERT INTO animals VALUES ('dog', 'woof');",
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(
+      screen.getByLabelText('SQL query editor'),
+      'SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+    await userEvent.click(screen.getByLabelText('Next step'))
+
+    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM friends AS friends, animals AS animals')
+    expect(screen.getByLabelText('Active SQL clause')).not.toHaveTextContent('JOIN')
+    expect(screen.queryByText(/paired with/)).not.toBeInTheDocument()
+  })
+
   it('renders self-join visualization', async () => {
     render(<App />)
     await advanceToQueryPage()

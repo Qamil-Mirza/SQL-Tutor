@@ -50,22 +50,23 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     const before = rows
     const rightRows = aliasRows(rightTable, ast.join.alias)
     const joined: AliasedRow[] = []
-    const details: string[] = []
+    const details: string[] | undefined = ast.join.syntax === 'comma' ? undefined : []
     for (const left of rows) {
       for (const right of rightRows) {
         const candidate = mergeRows(left, right)
         if (!ast.join.condition || evaluateCondition(ast.join.condition, candidate)) {
           joined.push(candidate)
-          details.push(ast.join.condition ? `${left.id} matched ${right.id} on ${ast.join.condition.label}` : `${left.id} paired with ${right.id}`)
+          details?.push(`${left.id} matched ${right.id} on ${ast.join.condition!.label}`)
         }
       }
     }
     rows = joined
+    const isCommaJoin = ast.join.syntax === 'comma'
     steps.push({
       id: 'join',
       kind: 'join',
-      title: 'JOIN',
-      clause: ast.join.condition
+      title: isCommaJoin ? 'FROM' : 'JOIN',
+      clause: !isCommaJoin && ast.join.condition
         ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${ast.join.condition.label}`
         : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
       explanation: ast.join.condition
