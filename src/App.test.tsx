@@ -127,10 +127,15 @@ describe('App', () => {
     await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
 
-    expect(screen.getByLabelText('Trace title and back action')).toContainElement(screen.getByRole('heading', { name: 'Trace' }))
+    const titleSection = screen.getByRole('region', { name: 'Trace title and back action' })
+    const stepperSection = screen.getByRole('region', { name: 'Trace stepper' })
+
+    expect(titleSection).toContainElement(screen.getByRole('heading', { name: 'Trace' }))
     expect(screen.getByRole('button', { name: 'Back to query' })).toHaveClass('back-button')
-    expect(within(screen.getByLabelText('Trace step rail')).getByText('FROM')).toBeInTheDocument()
-    expect(screen.getByLabelText('Step controls')).toHaveClass('centered-step-controls')
+    expect(titleSection).not.toContainElement(screen.getByLabelText('Step controls'))
+    expect(stepperSection).toContainElement(screen.getByLabelText('Step controls'))
+    expect(within(stepperSection).getByLabelText('Trace step rail')).toContainElement(within(stepperSection).getByText('FROM'))
+    expect(within(stepperSection).getByLabelText('Step controls')).toHaveClass('centered-step-controls')
   })
 
   it('shows only one trace table state at a time with a before-after switch', async () => {

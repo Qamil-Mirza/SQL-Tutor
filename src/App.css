@@ -218,6 +218,7 @@
 }
 
 .pane-heading,
+.trace-title-section,
 .trace-card,
 .table-builder,
 .query-card {
@@ -225,8 +226,7 @@
 }
 
 .pane-heading h1,
-.trace-nav-card h1,
-.trace-nav-card h2,
+.trace-title-section h1,
 .table-builder h2,
 .query-card h2,
 .visualization-panel h2 {
@@ -240,8 +240,7 @@
   line-height: 1.05;
 }
 
-.trace-nav-card h1,
-.trace-nav-card h2,
+.trace-title-section h1,
 .table-builder h2,
 .query-card h2,
 .visualization-panel h2 {
@@ -290,14 +289,16 @@
   padding: 18px;
 }
 
-.trace-nav-card {
-  display: grid;
-  gap: 18px;
-}
-
-.trace-title-actions {
+.trace-title-section {
   display: grid;
   justify-items: start;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.trace-stepper-card {
+  display: grid;
+  gap: 18px;
 }
 
 .visualization-panel {

@@ -120,13 +120,13 @@ function App() {
     return (
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
-          <div className="trace-card trace-nav-card">
-            <div className="trace-title-actions" aria-label="Trace title and back action">
-              <h1 id="trace-heading">Trace</h1>
-              <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
-                Back to query
-              </button>
-            </div>
+          <section className="trace-title-section" aria-label="Trace title and back action">
+            <h1 id="trace-heading">Trace</h1>
+            <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
+              Back to query
+            </button>
+          </section>
+          <section className="trace-card trace-stepper-card" aria-label="Trace stepper">
             <StepNavigator
               steps={steps}
               stepIndex={stepIndex}
@@ -134,7 +134,7 @@ function App() {
               onNext={() => setStepIndex((value) => Math.min(steps.length - 1, value + 1))}
               onReset={() => setStepIndex(0)}
             />
-          </div>
+          </section>
           <section className="trace-card visualization-panel" aria-label="Execution visualization">
             {activeStep ? <VisualizationPanel key={activeStep.id} step={activeStep} /> : <EmptyState />}
           </section>
