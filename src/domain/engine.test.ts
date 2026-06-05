@@ -322,6 +322,28 @@ describe('executeQuery', () => {
     expect(steps[1].explanation).toBe('Pair every row from m1 with every row from m2.')
   })
 
+  it('exposes both source tables for comma join load-in visualization', () => {
+    const mentors: Table[] = [
+      {
+        name: 'mentors',
+        columns: ['name', 'language'],
+        rows: [
+          { name: 'Chi', language: 'Java' },
+          { name: 'Kaitlyn', language: 'Java' },
+        ],
+      },
+    ]
+
+    const [fromStep] = executeQuery(parseQuery('SELECT m1.name, m2.name FROM mentors AS m1, mentors as m2 WHERE m1.name > m2.name'), mentors)
+
+    expect(fromStep.display?.afterLabel).toBe('Load in')
+    expect(fromStep.sources?.map((source) => source.label)).toEqual(['mentors as m1', 'mentors as m2'])
+    expect(fromStep.sources?.map((source) => source.rows.map((row) => row.id))).toEqual([
+      ['m1:mentors-1', 'm1:mentors-2'],
+      ['m2:mentors-1', 'm2:mentors-2'],
+    ])
+  })
+
   it('visualizes each AND condition as a separate where step', () => {
     const mentors: Table[] = [
       {
