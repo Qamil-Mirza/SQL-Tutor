@@ -483,6 +483,38 @@ describe('App', () => {
     expect(selectedHeaders.map((header) => header.textContent)).toEqual(expect.arrayContaining(['u.name', 'u.tier']))
   })
 
+  it('colors aliased and expression source columns on the SELECT before table', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      [
+        'CREATE TABLE staff (name, location, single, budget, in_state);',
+        "INSERT INTO staff VALUES ('Alicia', 'Downtown', TRUE, 1100, FALSE);",
+        'CREATE TABLE apartments (name, rent, location, single);',
+        "INSERT INTO apartments VALUES ('Identity', 900, 'Downtown', TRUE);",
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(
+      screen.getByLabelText('SQL query editor'),
+      [
+        'SELECT s.name AS staff_name, s.in_state AS in_state, a.name AS apartment_name, s.budget - a.rent AS budget_surplus',
+        'FROM staff AS s',
+        'JOIN apartments AS a ON s.location = a.location AND s.single = a.single',
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+    await userEvent.click(screen.getByLabelText('Next step'))
+    await userEvent.click(screen.getByLabelText('Next step'))
+    await userEvent.click(screen.getByRole('button', { name: 'Before' }))
+
+    const selectedHeaders = screen.getAllByRole('columnheader').filter((header) => header.classList.contains('selected-column'))
+    expect(selectedHeaders.map((header) => header.textContent)).toEqual(expect.arrayContaining(['s.name', 's.in_state', 'a.name', 's.budget', 'a.rent']))
+  })
+
   it('shows aggregate values on grouped query steps', async () => {
     render(<App />)
     await advanceToQueryPage()

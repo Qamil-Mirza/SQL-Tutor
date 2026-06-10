@@ -157,7 +157,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     before: beforeSelect,
     after: rows,
     details: ast.select.map((item) => item.label),
-    highlights: [{ kind: 'selected', columnKeys: Object.keys(rows[0]?.values ?? {}) }],
+    highlights: [{ kind: 'selected', columnKeys: selectHighlightColumnKeys(ast.select, rows) }],
   })
 
   if (ast.orderBy.length) {
@@ -354,6 +354,30 @@ function collectAggregatesInExpression(expression: Expression): Extract<Expressi
     ...collectAggregatesInExpression(expression.left),
     ...collectAggregatesInExpression(expression.right),
   ]
+  return []
+}
+
+function selectHighlightColumnKeys(select: SelectItem[], rows: AliasedRow[]) {
+  const keys = new Set(Object.keys(rows[0]?.values ?? {}))
+  for (const item of select) {
+    collectColumnKeysInExpression(item.expression).forEach((key) => keys.add(key))
+  }
+  return [...keys]
+}
+
+function collectColumnKeysInExpression(expression: Expression): string[] {
+  if (expression.type === 'column') {
+    return [expression.tableAlias ? `${expression.tableAlias}.${expression.column}` : expression.column]
+  }
+  if (expression.type === 'aggregate') {
+    return expression.column ? collectColumnKeysInExpression(expression.column) : []
+  }
+  if (expression.type === 'binary') {
+    return [
+      ...collectColumnKeysInExpression(expression.left),
+      ...collectColumnKeysInExpression(expression.right),
+    ]
+  }
   return []
 }
 

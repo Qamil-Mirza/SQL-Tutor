@@ -67,6 +67,44 @@ describe('executeQuery', () => {
     })
   })
 
+  it('highlights source columns and projected output columns on the SELECT step', () => {
+    const tables: Table[] = [
+      {
+        name: 'staff',
+        columns: ['name', 'location', 'single', 'budget', 'in_state'],
+        rows: [{ name: 'Alicia', location: 'Downtown', single: true, budget: 1100, in_state: false }],
+      },
+      {
+        name: 'apartments',
+        columns: ['name', 'rent', 'location', 'single'],
+        rows: [{ name: 'Identity', rent: 900, location: 'Downtown', single: true }],
+      },
+    ]
+
+    const steps = executeQuery(
+      parseQuery(
+        'SELECT s.name AS staff_name, s.in_state AS in_state, a.name AS apartment_name, s.budget - a.rent AS budget_surplus FROM staff AS s JOIN apartments AS a ON s.location = a.location AND s.single = a.single',
+      ),
+      tables,
+    )
+    const selectStep = steps.find((step) => step.kind === 'select')!
+
+    expect(selectStep.highlights).toContainEqual({
+      kind: 'selected',
+      columnKeys: expect.arrayContaining([
+        'staff_name',
+        'in_state',
+        'apartment_name',
+        'budget_surplus',
+        's.name',
+        's.in_state',
+        'a.name',
+        's.budget',
+        'a.rent',
+      ]),
+    })
+  })
+
   it('supports self joins', () => {
     const rows = rowsFor('SELECT e.name AS employee, m.name AS manager FROM employees AS e JOIN employees AS m ON e.manager_id = m.id')
     expect(rows).toHaveLength(3)
