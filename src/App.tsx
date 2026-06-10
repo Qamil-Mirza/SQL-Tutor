@@ -191,10 +191,10 @@ function App() {
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="workflow-page query-route" aria-label="Query page">
           <div className="pane-heading compact-heading">
-            <h1>Query</h1>
             <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
               Back to tables
             </button>
+            <h1>Query</h1>
           </div>
           <div className="query-page-grid">
             <QueryEditor
@@ -438,15 +438,17 @@ function QueryEditor({
           spellCheck={false}
         />
       </div>
-      <button className="primary-button" type="button" onClick={onRun}>
-        Run Query
-      </button>
-      <button className="secondary-button" type="button" onClick={onFormat} aria-label="Format query SQL">
-        Format
-      </button>
-      <button className="secondary-button" type="button" onClick={onShare}>
-        Share
-      </button>
+      <div className="editor-actions">
+        <button className="primary-button" type="button" onClick={onRun}>
+          Run Query
+        </button>
+        <button className="secondary-button" type="button" onClick={onFormat} aria-label="Format query SQL">
+          Format
+        </button>
+        <button className="secondary-button" type="button" onClick={onShare}>
+          Share
+        </button>
+      </div>
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
@@ -687,12 +689,14 @@ function TableBuilder({
           onChange={(event) => onTableSqlChange(event.target.value)}
           spellCheck={false}
         />
-        <button className="secondary-button" type="button" onClick={onApplyTableSql}>
-          Create Tables
-        </button>
-        <button className="secondary-button" type="button" onClick={onFormatTableSql} aria-label="Format table SQL">
-          Format
-        </button>
+        <div className="editor-actions">
+          <button className="secondary-button" type="button" onClick={onApplyTableSql}>
+            Create Tables
+          </button>
+          <button className="secondary-button" type="button" onClick={onFormatTableSql} aria-label="Format table SQL">
+            Format
+          </button>
+        </div>
         <button className="primary-button" type="button" onClick={onContinue}>
           Continue to Query
         </button>

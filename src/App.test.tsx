@@ -141,9 +141,9 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Format query SQL' }))
 
     expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT u.name AS person',
-      'FROM users AS u',
-      "WHERE u.tier = 'pro'",
+      'SELECT   u.name AS person',
+      'FROM     users AS u',
+      "WHERE    u.tier = 'pro'",
     ].join('\n'))
 
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
@@ -153,10 +153,20 @@ describe('App', () => {
     expect(window.location.pathname).toBe('/visualization')
     await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT u.name AS person',
-      'FROM users AS u',
-      "WHERE u.tier = 'pro'",
+      'SELECT   u.name AS person',
+      'FROM     users AS u',
+      "WHERE    u.tier = 'pro'",
     ].join('\n'))
+  })
+
+  it('places the query back button before the query heading', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+
+    const backButton = screen.getByRole('button', { name: 'Back to tables' })
+    const queryHeading = screen.getByRole('heading', { name: 'Query' })
+
+    expect(Boolean(backButton.compareDocumentPosition(queryHeading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
   })
 
   it('uses the brand lockup to return home to table creation', async () => {

@@ -1,5 +1,6 @@
 const keywordPattern = /\b(CREATE|TABLE|INSERT|INTO|VALUES|SELECT|FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|AS|AND|ASC|DESC|TRUE|FALSE|NULL)\b/gi
 const clausePattern = /\b(FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b/gi
+const alignedClausePattern = /^(SELECT|FROM|JOIN|ON|WHERE|GROUP BY|HAVING|ORDER BY|LIMIT)\b\s*(.*)$/i
 
 export function formatSql(input: string) {
   const statements = splitStatements(input)
@@ -33,7 +34,16 @@ function breakSelectClauses(text: string) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
+    .map(alignClauseLine)
     .join('\n')
+}
+
+function alignClauseLine(line: string) {
+  const match = line.match(alignedClausePattern)
+  if (!match) return line
+  const label = match[1].toUpperCase()
+  const body = match[2].trim()
+  return body ? `${label.padEnd(8, ' ')} ${body}` : label
 }
 
 function splitStatements(text: string) {
