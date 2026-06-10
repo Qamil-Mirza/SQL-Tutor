@@ -616,11 +616,12 @@ button:disabled {
 .step-list::before {
   content: "";
   position: absolute;
-  top: 23px;
+  top: 50%;
   right: 36px;
   left: 36px;
   height: 2px;
   background: var(--line-strong);
+  transform: translateY(-50%);
   z-index: 0;
 }
 
