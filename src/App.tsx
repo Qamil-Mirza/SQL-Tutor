@@ -26,6 +26,13 @@ type InitialAppState = WorkspaceSnapshot & {
   isSharedSession: boolean
 }
 
+type ShareModalState = {
+  isOpen: boolean
+  isLoading: boolean
+  shareUrl: string
+  copied: boolean
+}
+
 function App() {
   const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
   const initialResult = useMemo(() => run(initialState.sql, initialState.tables), [initialState.sql, initialState.tables])
@@ -40,8 +47,12 @@ function App() {
   const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
   const [steps, setSteps] = useState<ExecutionStep[]>(initialResult.steps)
   const [isSharedSession] = useState(initialState.isSharedSession)
-  const [shareUrl, setShareUrl] = useState('')
-  const [shareStatus, setShareStatus] = useState('')
+  const [shareModal, setShareModal] = useState<ShareModalState>({
+    isOpen: false,
+    isLoading: false,
+    shareUrl: '',
+    copied: false,
+  })
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
@@ -56,6 +67,16 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   })
+
+  useEffect(() => {
+    if (!shareModal.isOpen || !shareModal.isLoading) return undefined
+    const timer = window.setTimeout(() => {
+      setShareModal((current) => (
+        current.isOpen ? { ...current, isLoading: false } : current
+      ))
+    }, 2000)
+    return () => window.clearTimeout(timer)
+  }, [shareModal.isOpen, shareModal.isLoading])
 
   function navigate(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
     window.history[historyMode === 'push' ? 'pushState' : 'replaceState']({}, '', nextPath)
@@ -87,9 +108,18 @@ function App() {
       origin: window.location.origin,
       snapshot: { version: 1, tableSql, sql },
     })
-    setShareUrl(url)
-    setShareStatus('New share link created')
+    setShareModal({ isOpen: true, isLoading: true, shareUrl: url, copied: false })
     void window.navigator.clipboard?.writeText(url)
+  }
+
+  function closeShareModal() {
+    setShareModal((current) => ({ ...current, isOpen: false, copied: false }))
+  }
+
+  function copyShareLink() {
+    if (!shareModal.shareUrl) return
+    void window.navigator.clipboard?.writeText(shareModal.shareUrl)
+    setShareModal((current) => ({ ...current, copied: true }))
   }
 
   function applyTableSql() {
@@ -160,11 +190,17 @@ function App() {
               onSqlChange={setSql}
               onRun={() => handleRun()}
               onShare={handleShare}
-              shareUrl={shareUrl}
-              shareStatus={shareStatus}
             />
             <TableContext tables={tables} />
           </div>
+          <ShareLinkModal
+            isOpen={shareModal.isOpen}
+            isLoading={shareModal.isLoading}
+            shareUrl={shareModal.shareUrl}
+            copied={shareModal.copied}
+            onClose={closeShareModal}
+            onCopy={copyShareLink}
+          />
         </section>
       </AppShell>
     )
@@ -360,16 +396,12 @@ function QueryEditor({
   onSqlChange,
   onRun,
   onShare,
-  shareUrl,
-  shareStatus,
 }: {
   sql: string
   error?: string
   onSqlChange: (value: string) => void
   onRun: () => void
   onShare: () => void
-  shareUrl: string
-  shareStatus: string
 }) {
   const editorRows = rowsForQuery(sql)
   return (
@@ -395,21 +427,67 @@ function QueryEditor({
       <button className="secondary-button" type="button" onClick={onShare}>
         Share
       </button>
-      <ShareLink value={shareUrl} status={shareStatus} />
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
 }
 
-function ShareLink({ value, status }: { value: string; status: string }) {
-  if (!value) return null
+function ShareLinkModal({
+  isOpen,
+  isLoading,
+  shareUrl,
+  copied,
+  onClose,
+  onCopy,
+}: {
+  isOpen: boolean
+  isLoading: boolean
+  shareUrl: string
+  copied: boolean
+  onClose: () => void
+  onCopy: () => void
+}) {
+  useEffect(() => {
+    if (!isOpen) return undefined
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
   return (
-    <div className="share-link-panel">
-      {status ? <p className="share-status" role="status">{status}</p> : null}
-      <label className="field-label" htmlFor="share-link">
-        Share link
-      </label>
-      <input id="share-link" readOnly value={value} />
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+        <button className="modal-close-button" type="button" aria-label="Close share dialog" onClick={onClose}>
+          x
+        </button>
+        <h2 id="share-modal-title">Share link</h2>
+        {isLoading ? (
+          <div className="share-loading" role="status" aria-live="polite">
+            <span className="share-spinner" aria-hidden="true" />
+            <p>Preparing share link</p>
+          </div>
+        ) : (
+          <div className="share-ready">
+            <label className="field-label" htmlFor="share-link">
+              Share link
+            </label>
+            <input id="share-link" readOnly value={shareUrl} />
+            <button className="secondary-button" type="button" onClick={onCopy}>
+              Copy link
+            </button>
+            {copied ? <p className="copy-status" role="status">Copied</p> : null}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

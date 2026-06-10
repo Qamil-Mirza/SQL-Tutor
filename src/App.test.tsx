@@ -9,8 +9,8 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-async function advanceToQueryPage() {
-  await userEvent.click(screen.getByRole('button', { name: 'Continue to Query' }))
+async function advanceToQueryPage(user: Pick<typeof userEvent, 'click'> = userEvent) {
+  await user.click(screen.getByRole('button', { name: 'Continue to Query' }))
 }
 
 describe('App', () => {
@@ -591,12 +591,18 @@ describe('App', () => {
     expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
   })
 
-  it('generates a visible share link for the current workspace', async () => {
+  it('shows a loading share modal before revealing the current workspace share link', async () => {
     const { unmount } = render(<App />)
     await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
 
-    const shareLink = screen.getByLabelText('Share link')
+    expect(screen.getByRole('dialog', { name: 'Share link' })).toBeInTheDocument()
+    expect(screen.getByText('Preparing share link')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Share link' })).not.toBeInTheDocument()
+
+    await new Promise((resolve) => setTimeout(resolve, 2100))
+
+    const shareLink = await screen.findByRole('textbox', { name: 'Share link' })
     expect((shareLink as HTMLInputElement).value).toContain('/visualization?share=')
 
     const sharedLocation = new URL((shareLink as HTMLInputElement).value)
@@ -607,12 +613,15 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
   })
 
-  it('confirms when a new share link is created', async () => {
+  it('dismisses the share modal with the close button', async () => {
     render(<App />)
     await advanceToQueryPage()
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
 
-    expect(screen.getByRole('status')).toHaveTextContent('New share link created')
+    expect(screen.getByRole('dialog', { name: 'Share link' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Close share dialog' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Share link' })).not.toBeInTheDocument()
   })
 
   it('starts shared links at the beginning even when created after visiting a later trace step', async () => {
@@ -623,8 +632,10 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
+    await new Promise((resolve) => setTimeout(resolve, 2100))
 
-    const sharedLocation = new URL((screen.getByLabelText('Share link') as HTMLInputElement).value)
+    const shareLink = await screen.findByRole('textbox', { name: 'Share link' })
+    const sharedLocation = new URL((shareLink as HTMLInputElement).value)
     unmount()
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
     render(<App />)
