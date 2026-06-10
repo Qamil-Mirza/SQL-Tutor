@@ -298,7 +298,8 @@
 
 .trace-stepper-card {
   display: grid;
-  gap: 18px;
+  justify-items: center;
+  gap: 12px;
 }
 
 .visualization-panel {
@@ -602,27 +603,31 @@ button:disabled {
 .step-list {
   display: flex;
   position: relative;
-  justify-content: center;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  justify-content: flex-start;
   gap: 12px;
   list-style: none;
-  margin: 0;
-  padding: 6px 0;
-  overflow-x: auto;
+  margin: 0 auto;
+  padding: 6px 12px;
 }
 
 .step-list::before {
   content: "";
   position: absolute;
   top: 23px;
-  right: 12px;
-  left: 12px;
+  right: 36px;
+  left: 36px;
   height: 2px;
   background: var(--line-strong);
+  z-index: 0;
 }
 
 .step-list li {
   display: flex;
   position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -639,9 +644,13 @@ button:disabled {
 }
 
 .step-rail {
+  width: 100%;
   min-width: 0;
-  border-top: 1px solid var(--line);
-  padding-top: 2px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 2px 4px;
+  scrollbar-gutter: stable;
 }
 
 .step-list span {
