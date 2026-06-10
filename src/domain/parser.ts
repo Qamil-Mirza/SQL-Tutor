@@ -48,9 +48,11 @@ export function parseQuery(input: string): QueryAST {
   if (joinText || onText) {
     const joinSource = joinText ? parseTableSource(joinText, true) : undefined
     if (!joinSource || !onText) throw new QueryParseError('JOIN must use: JOIN table AS alias ON alias.column = alias.column.')
+    const conditions = parseConditions(onText)
     join = {
       ...joinSource,
-      condition: parseCondition(onText),
+      condition: conditions[0],
+      conditions,
       syntax: 'explicit',
     }
   }

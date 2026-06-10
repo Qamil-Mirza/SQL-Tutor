@@ -56,6 +56,7 @@ export type JoinClause = {
   tableName: string
   alias: string
   condition?: Condition
+  conditions?: Condition[]
   syntax?: 'explicit' | 'comma'
 }
 

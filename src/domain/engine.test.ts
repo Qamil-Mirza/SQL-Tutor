@@ -22,6 +22,41 @@ describe('executeQuery', () => {
     expect(rows.map((row) => row.values['u.name'])).toEqual(['Ada', 'Chen'])
   })
 
+  it('supports explicit JOIN ... ON conditions joined with AND', () => {
+    const tables: Table[] = [
+      {
+        name: 'staff',
+        columns: ['name', 'location', 'single', 'budget', 'in_state'],
+        rows: [
+          { name: 'Alicia', location: 'Downtown', single: true, budget: 1100, in_state: false },
+          { name: 'Dhruv', location: 'Downtown', single: false, budget: 2000, in_state: false },
+          { name: 'Grace X', location: 'Downtown', single: false, budget: 1900, in_state: false },
+        ],
+      },
+      {
+        name: 'apartments',
+        columns: ['name', 'rent', 'location', 'single'],
+        rows: [
+          { name: 'Dwight', rent: 2000, location: 'Downtown', single: false },
+          { name: 'Identity', rent: 900, location: 'Downtown', single: true },
+          { name: 'Blake', rent: 1200, location: 'Downtown', single: true },
+        ],
+      },
+    ]
+
+    const rows = executeQuery(
+      parseQuery(
+        'SELECT s.name AS staff_name, a.name AS apartment_name, s.budget - a.rent AS budget_surplus FROM staff AS s JOIN apartments AS a ON s.location = a.location AND s.single = a.single WHERE s.budget - a.rent >= 0 ORDER BY staff_name ASC, budget_surplus DESC',
+      ),
+      tables,
+    ).at(-1)!.after
+
+    expect(rows.map((row) => row.values)).toEqual([
+      { staff_name: 'Alicia', apartment_name: 'Identity', budget_surplus: 200 },
+      { staff_name: 'Dhruv', apartment_name: 'Dwight', budget_surplus: 0 },
+    ])
+  })
+
   it('highlights columns added by a joined table', () => {
     const steps = executeQuery(parseQuery('SELECT u.name, l.artist FROM users AS u JOIN listening AS l ON u.id = l.user_id'), initialTables)
     const joinStep = steps.find((step) => step.kind === 'join')

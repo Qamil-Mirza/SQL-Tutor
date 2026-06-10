@@ -51,12 +51,14 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
     const rightRows = aliasRows(rightTable, ast.join.alias)
     const joined: AliasedRow[] = []
     const details: string[] | undefined = ast.join.syntax === 'comma' ? undefined : []
+    const joinConditions = ast.join.conditions ?? (ast.join.condition ? [ast.join.condition] : [])
+    const joinConditionLabel = joinConditions.map((condition) => condition.label).join(' AND ')
     for (const left of rows) {
       for (const right of rightRows) {
         const candidate = mergeRows(left, right)
-        if (!ast.join.condition || evaluateCondition(ast.join.condition, candidate)) {
+        if (!joinConditions.length || joinConditions.every((condition) => evaluateCondition(condition, candidate))) {
           joined.push(candidate)
-          details?.push(`${left.id} matched ${right.id} on ${ast.join.condition!.label}`)
+          details?.push(`${left.id} matched ${right.id} on ${joinConditionLabel}`)
         }
       }
     }
@@ -66,10 +68,10 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       id: 'join',
       kind: 'join',
       title: isCommaJoin ? 'Cross join' : 'JOIN',
-      clause: !isCommaJoin && ast.join.condition
-        ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${ast.join.condition.label}`
+      clause: !isCommaJoin && joinConditions.length
+        ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${joinConditionLabel}`
         : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
-      explanation: ast.join.condition
+      explanation: joinConditions.length
         ? `Pair rows from ${ast.from.alias} and ${ast.join.alias} when the ON condition is true.`
         : `Pair every row from ${ast.from.alias} with every row from ${ast.join.alias}.`,
       before,

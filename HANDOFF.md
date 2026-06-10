@@ -9,7 +9,7 @@ Build an educational SQL logical execution visualizer for CSM C88C. The design p
 - `SELECT` columns, `SELECT *`, and aggregate expressions: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`
 - Arithmetic expressions with `+`, `-`, `*`, and `/`
 - Required `FROM table`, with optional `AS alias` or bare alias
-- Optional single inner `JOIN table AS alias ON condition` or comma join `FROM table_a, table_b` / `FROM table AS alias, table AS alias`
+- Optional single inner `JOIN table AS alias ON condition` with simple comparisons joined by `AND`, or comma join `FROM table_a, table_b` / `FROM table AS alias, table AS alias`
 - Optional `WHERE` with simple comparisons joined by `AND` (`OR` is rejected with a friendly error instead of being silently misparsed)
 - Optional `GROUP BY`
 - Optional `HAVING`
@@ -22,7 +22,7 @@ Aliases are optional for `FROM`; when omitted, the table name is used as the ali
 
 ## Architecture Overview
 
-Parser responsibilities live in `src/domain/parser.ts`. The parser normalizes whitespace, rejects unsupported clauses early, accepts `FROM table`, `FROM table alias`, or `FROM table AS alias`, accepts one comma-joined source in `FROM`, allows unique implicit aliases for comma joins, requires explicit aliases for explicit `JOIN` sources, and builds a `QueryAST` from the supported subset.
+Parser responsibilities live in `src/domain/parser.ts`. The parser normalizes whitespace, rejects unsupported clauses early, accepts `FROM table`, `FROM table alias`, or `FROM table AS alias`, accepts one comma-joined source in `FROM`, allows unique implicit aliases for comma joins, requires explicit aliases for explicit `JOIN` sources, accepts explicit `JOIN ... ON` comparisons chained with `AND`, and builds a `QueryAST` from the supported subset.
 
 Execution engine responsibilities live in `src/domain/engine.ts`. The engine evaluates the AST against in-memory tables in logical order: `FROM`, `JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `SELECT`, `ORDER BY`, `LIMIT`, `Result`. It preserves stable row provenance through aliasing, joins, grouping, filtering, sorting, projection, and limiting.
 
@@ -53,7 +53,7 @@ Share snapshot helpers live in `src/domain/shareSnapshot.ts`. Share links compre
 Step generation follows:
 
 1. `FROM`: alias every source row. For comma joins, the explanation names both source aliases even though the displayed rows are still the first source before pairing.
-2. `JOIN`: pair left and right aliased rows that satisfy `ON`, or pair every row for comma joins before `WHERE` filtering.
+2. `JOIN`: pair left and right aliased rows that satisfy every `ON` condition, or pair every row for comma joins before `WHERE` filtering.
 3. `WHERE`: filter rows before grouping. Conditions chained with `AND` are visualized as separate sequential `WHERE` steps, each starting from the rows kept by the previous condition.
 4. `GROUP BY`: create group buckets, or one implicit group when aggregates are selected.
 5. `HAVING`: filter groups after aggregate values are available.

@@ -19,6 +19,26 @@ describe('parseQuery', () => {
     expect(ast.having).toHaveLength(1)
   })
 
+  it('parses explicit join conditions joined with AND', () => {
+    const ast = parseQuery(
+      'SELECT s.name, a.name FROM staff AS s JOIN apartments AS a ON s.location = a.location AND s.single = a.single',
+    )
+    expect(ast.join?.conditions).toEqual([
+      {
+        left: { type: 'column', tableAlias: 's', column: 'location', label: 's.location' },
+        operator: '=',
+        right: { type: 'column', tableAlias: 'a', column: 'location', label: 'a.location' },
+        label: 's.location = a.location',
+      },
+      {
+        left: { type: 'column', tableAlias: 's', column: 'single', label: 's.single' },
+        operator: '=',
+        right: { type: 'column', tableAlias: 'a', column: 'single', label: 'a.single' },
+        label: 's.single = a.single',
+      },
+    ])
+  })
+
   it('parses table aliases without AS', () => {
     const ast = parseQuery(
       'SELECT employee.name, manager.name FROM employees employee JOIN employees manager ON employee.manager_id = manager.id',
@@ -33,6 +53,14 @@ describe('parseQuery', () => {
         right: { type: 'column', tableAlias: 'manager', column: 'id', label: 'manager.id' },
         label: 'employee.manager_id = manager.id',
       },
+      conditions: [
+        {
+          left: { type: 'column', tableAlias: 'employee', column: 'manager_id', label: 'employee.manager_id' },
+          operator: '=',
+          right: { type: 'column', tableAlias: 'manager', column: 'id', label: 'manager.id' },
+          label: 'employee.manager_id = manager.id',
+        },
+      ],
       syntax: 'explicit',
     })
   })
