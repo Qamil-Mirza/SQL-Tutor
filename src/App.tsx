@@ -26,6 +26,13 @@ type InitialAppState = WorkspaceSnapshot & {
   isSharedSession: boolean
 }
 
+type ShareModalState = {
+  isOpen: boolean
+  isLoading: boolean
+  shareUrl: string
+  copied: boolean
+}
+
 function App() {
   const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
   const initialResult = useMemo(() => run(initialState.sql, initialState.tables), [initialState.sql, initialState.tables])
@@ -40,7 +47,12 @@ function App() {
   const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
   const [steps, setSteps] = useState<ExecutionStep[]>(initialResult.steps)
   const [isSharedSession] = useState(initialState.isSharedSession)
-  const [shareUrl, setShareUrl] = useState('')
+  const [shareModal, setShareModal] = useState<ShareModalState>({
+    isOpen: false,
+    isLoading: false,
+    shareUrl: '',
+    copied: false,
+  })
   const activeStep = steps[stepIndex]
 
   useEffect(() => {
@@ -55,6 +67,16 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   })
+
+  useEffect(() => {
+    if (!shareModal.isOpen || !shareModal.isLoading) return undefined
+    const timer = window.setTimeout(() => {
+      setShareModal((current) => (
+        current.isOpen ? { ...current, isLoading: false } : current
+      ))
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [shareModal.isOpen, shareModal.isLoading])
 
   function navigate(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
     window.history[historyMode === 'push' ? 'pushState' : 'replaceState']({}, '', nextPath)
@@ -84,10 +106,20 @@ function App() {
   function handleShare() {
     const url = createShareUrl({
       origin: window.location.origin,
-      snapshot: { version: 1, tableSql, sql, stepIndex },
+      snapshot: { version: 1, tableSql, sql },
     })
-    setShareUrl(url)
+    setShareModal({ isOpen: true, isLoading: true, shareUrl: url, copied: false })
     void window.navigator.clipboard?.writeText(url)
+  }
+
+  function closeShareModal() {
+    setShareModal((current) => ({ ...current, isOpen: false, copied: false }))
+  }
+
+  function copyShareLink() {
+    if (!shareModal.shareUrl) return
+    void window.navigator.clipboard?.writeText(shareModal.shareUrl)
+    setShareModal((current) => ({ ...current, copied: true }))
   }
 
   function applyTableSql() {
@@ -118,13 +150,13 @@ function App() {
     return (
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
-          <div className="trace-card trace-nav-card">
-            <div>
-              <h1 id="trace-heading">Trace</h1>
-            </div>
+          <section className="trace-title-section" aria-label="Trace title and back action">
+            <h1 id="trace-heading">Trace</h1>
             <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
               Back to query
             </button>
+          </section>
+          <section className="trace-card trace-stepper-card" aria-label="Trace stepper">
             <StepNavigator
               steps={steps}
               stepIndex={stepIndex}
@@ -132,9 +164,9 @@ function App() {
               onNext={() => setStepIndex((value) => Math.min(steps.length - 1, value + 1))}
               onReset={() => setStepIndex(0)}
             />
-          </div>
+          </section>
           <section className="trace-card visualization-panel" aria-label="Execution visualization">
-            {activeStep ? <VisualizationPanel step={activeStep} /> : <EmptyState />}
+            {activeStep ? <VisualizationPanel key={activeStep.id} step={activeStep} /> : <EmptyState />}
           </section>
         </section>
       </AppShell>
@@ -158,10 +190,17 @@ function App() {
               onSqlChange={setSql}
               onRun={() => handleRun()}
               onShare={handleShare}
-              shareUrl={shareUrl}
             />
             <TableContext tables={tables} />
           </div>
+          <ShareLinkModal
+            isOpen={shareModal.isOpen}
+            isLoading={shareModal.isLoading}
+            shareUrl={shareModal.shareUrl}
+            copied={shareModal.copied}
+            onClose={closeShareModal}
+            onCopy={copyShareLink}
+          />
         </section>
       </AppShell>
     )
@@ -209,7 +248,6 @@ function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): Ini
         tableSql: sharedSnapshot.tableSql,
         sql: sharedSnapshot.sql,
         path: '/visualization',
-        stepIndex: sharedSnapshot.stepIndex,
         isSharedSession: true,
       }
     }
@@ -262,13 +300,13 @@ function AppShell({
   return (
     <main className="app-shell">
       <header className="app-topbar">
-        <div className="brand-lockup" aria-label="CSM C88C SQL Visualizer">
+        <button className="brand-lockup" type="button" onClick={() => onNavigate('/tables')} aria-label="CSM C88C SQL Visualizer home">
           <span className="brand-mark" aria-hidden="true">SQL</span>
-          <div>
-            <p className="brand-title">CSM C88C SQL Visualizer</p>
-            <p className="brand-subtitle">Logical execution tutor</p>
-          </div>
-        </div>
+          <span className="brand-copy">
+            <span className="brand-title">CSM C88C SQL Visualizer</span>
+            <span className="brand-subtitle">Logical execution tutor</span>
+          </span>
+        </button>
         <nav className="route-tabs" aria-label="Workflow">
           <button type="button" className={path === '/tables' ? 'active' : ''} onClick={() => onNavigate('/tables')} aria-current={path === '/tables' ? 'page' : undefined}>
             Tables
@@ -327,7 +365,7 @@ function StepNavigator({
 }) {
   return (
     <>
-      <div className="step-controls" aria-label="Step controls">
+      <div className="step-controls centered-step-controls" aria-label="Step controls">
         <button className="icon-button" type="button" onClick={onPrevious} disabled={stepIndex === 0 || steps.length === 0} aria-label="Previous step">
           <span aria-hidden="true">←</span>
         </button>
@@ -338,14 +376,16 @@ function StepNavigator({
           <span aria-hidden="true">→</span>
         </button>
       </div>
-      <ol className="step-list">
-        {steps.map((step, index) => (
-          <li key={step.id} className={index === stepIndex ? 'active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
-            <span>{index + 1}</span>
-            {step.title}
-          </li>
-        ))}
-      </ol>
+      <div className="step-rail" aria-label="Trace step rail">
+        <ol className="step-list">
+          {steps.map((step, index) => (
+            <li key={step.id} className={index === stepIndex ? 'active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
+              <span>{index + 1}</span>
+              {step.title}
+            </li>
+          ))}
+        </ol>
+      </div>
     </>
   )
 }
@@ -356,14 +396,12 @@ function QueryEditor({
   onSqlChange,
   onRun,
   onShare,
-  shareUrl,
 }: {
   sql: string
   error?: string
   onSqlChange: (value: string) => void
   onRun: () => void
   onShare: () => void
-  shareUrl: string
 }) {
   const editorRows = rowsForQuery(sql)
   return (
@@ -389,20 +427,67 @@ function QueryEditor({
       <button className="secondary-button" type="button" onClick={onShare}>
         Share
       </button>
-      <ShareLink value={shareUrl} />
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
 }
 
-function ShareLink({ value }: { value: string }) {
-  if (!value) return null
+function ShareLinkModal({
+  isOpen,
+  isLoading,
+  shareUrl,
+  copied,
+  onClose,
+  onCopy,
+}: {
+  isOpen: boolean
+  isLoading: boolean
+  shareUrl: string
+  copied: boolean
+  onClose: () => void
+  onCopy: () => void
+}) {
+  useEffect(() => {
+    if (!isOpen) return undefined
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
   return (
-    <div className="share-link-panel">
-      <label className="field-label" htmlFor="share-link">
-        Share link
-      </label>
-      <input id="share-link" readOnly value={value} />
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+        <button className="modal-close-button" type="button" aria-label="Close share dialog" onClick={onClose}>
+          x
+        </button>
+        <h2 id="share-modal-title">Share link</h2>
+        {isLoading ? (
+          <div className="share-loading" role="status" aria-live="polite">
+            <span className="share-spinner" aria-hidden="true" />
+            <p>Preparing share link</p>
+          </div>
+        ) : (
+          <div className="share-ready">
+            <label className="field-label" htmlFor="share-link">
+              Share link
+            </label>
+            <input id="share-link" readOnly value={shareUrl} />
+            <button className="secondary-button" type="button" onClick={onCopy}>
+              Copy link
+            </button>
+            {copied ? <p className="copy-status" role="status">Copied</p> : null}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
@@ -413,27 +498,36 @@ function rowsForQuery(sql: string) {
 }
 
 function VisualizationPanel({ step }: { step: ExecutionStep }) {
+  const hasBefore = Boolean(step.before)
+  const [view, setView] = useState<'before' | 'after'>(hasBefore ? 'before' : 'after')
+
+  const beforeLabel = step.display?.beforeLabel ?? 'Before'
+  const afterLabel = step.display?.afterLabel ?? 'After'
+  const activeLabel = view === 'before' ? beforeLabel : afterLabel
+  const activeData = view === 'before' ? step.before : step.after
+
   return (
     <article>
       <p className="eyebrow">Current step</p>
       <h2>{step.title}</h2>
-      <p className="explanation">{step.explanation}</p>
-      {step.details?.length ? (
-        <ul className="detail-list">
-          {step.details.slice(0, 6).map((detail) => (
-            <li key={detail}>{detail}</li>
-          ))}
-        </ul>
+      <p className="trace-comment">{step.explanation}</p>
+      {step.clause ? (
+        <div className="active-clause" aria-label="Active SQL clause">
+          <span>Clause</span>
+          <code>{step.clause}</code>
+        </div>
       ) : null}
       {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
-      {step.before ? (
-        <>
-          <h3>{step.display?.beforeLabel ?? 'Before'}</h3>
-          <DataView data={step.before} highlights={step.highlights} />
-        </>
-      ) : null}
-      <h3>{step.display?.afterLabel ?? 'After'}</h3>
-      {step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={step.after} highlights={step.highlights} />}
+      <section className="trace-table-section" aria-label="Trace table state">
+        {hasBefore ? (
+          <div className="trace-state-toggle centered-toggle" aria-label="Trace table state selector">
+            <button type="button" aria-pressed={view === 'before'} onClick={() => setView('before')}>{beforeLabel}</button>
+            <button type="button" aria-pressed={view === 'after'} onClick={() => setView('after')}>{afterLabel}</button>
+          </div>
+        ) : null}
+        <h3>{activeLabel}</h3>
+        {view === 'after' && step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
+      </section>
     </article>
   )
 }
@@ -478,31 +572,53 @@ function DataView({ data, highlights = [] }: { data: AliasedRow[] | Group[]; hig
 }
 
 function TableView({ rows, highlights = [] }: { rows: AliasedRow[]; highlights?: Highlight[] }) {
+  const [page, setPage] = useState(0)
   const columns = useMemo(() => [...new Set(rows.flatMap((row) => Object.keys(row.values)))], [rows])
   const removedRows = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.rowIds ?? [])), [highlights])
   const selectedColumns = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'selected').flatMap((highlight) => highlight.columnKeys ?? [])), [highlights])
+  const pageCount = Math.max(1, Math.ceil(rows.length / previewPageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * previewPageSize
+  const visibleRows = rows.slice(pageStart, pageStart + previewPageSize)
+  const rangeStart = rows.length ? pageStart + 1 : 0
+  const rangeEnd = Math.min(rows.length, pageStart + visibleRows.length)
+  const shouldPaginate = rows.length > previewPageSize
+
   return (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>row</th>
-            {columns.map((column) => (
-              <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
-              <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
+    <div className="trace-table">
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>row</th>
               {columns.map((column) => (
-                <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
+                <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => (
+              <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
+                <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
+                {columns.map((column) => (
+                  <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {shouldPaginate ? (
+        <div className="pagination-controls trace-pagination-controls">
+          <span>Rows {rangeStart}-{rangeEnd} of {rows.length}</span>
+          <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0} aria-label="Previous trace table page">
+            Previous
+          </button>
+          <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next trace table page">
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

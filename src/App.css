@@ -68,6 +68,20 @@
   min-width: 0;
   align-items: center;
   gap: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.brand-lockup:hover:not(:disabled) {
+  transform: none;
+}
+
+.brand-lockup:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  outline-offset: 4px;
 }
 
 .brand-mark {
@@ -81,6 +95,11 @@
   color: #ffffff;
   font-size: 11px;
   font-weight: 900;
+}
+
+.brand-copy {
+  display: grid;
+  min-width: 0;
 }
 
 .brand-title,
@@ -199,6 +218,7 @@
 }
 
 .pane-heading,
+.trace-title-section,
 .trace-card,
 .table-builder,
 .query-card {
@@ -206,8 +226,7 @@
 }
 
 .pane-heading h1,
-.trace-nav-card h1,
-.trace-nav-card h2,
+.trace-title-section h1,
 .table-builder h2,
 .query-card h2,
 .visualization-panel h2 {
@@ -221,8 +240,7 @@
   line-height: 1.05;
 }
 
-.trace-nav-card h1,
-.trace-nav-card h2,
+.trace-title-section h1,
 .table-builder h2,
 .query-card h2,
 .visualization-panel h2 {
@@ -269,6 +287,19 @@
 
 .trace-card {
   padding: 18px;
+}
+
+.trace-title-section {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.trace-stepper-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
 }
 
 .visualization-panel {
@@ -453,10 +484,93 @@ button:disabled {
   justify-self: start;
 }
 
-.share-link-panel input {
+.share-ready input {
   min-height: 40px;
   padding: 9px 12px;
   font-size: 13px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgb(15 23 42 / 64%);
+  padding: 20px;
+}
+
+.share-modal {
+  position: relative;
+  width: min(100%, 520px);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 28px 80px rgb(15 23 42 / 28%);
+  padding: 24px;
+}
+
+.share-modal h2 {
+  margin: 0 36px 18px 0;
+  font-size: 24px;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 34px;
+  min-height: 34px;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+.share-loading {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  gap: 14px;
+  text-align: center;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.share-loading p,
+.copy-status {
+  margin: 0;
+}
+
+.share-spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid color-mix(in srgb, var(--accent) 16%, var(--line));
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: share-spin 900ms linear infinite;
+}
+
+.share-ready {
+  display: grid;
+  gap: 10px;
+}
+
+.share-ready .secondary-button {
+  margin-top: 4px;
+}
+
+.copy-status {
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+@keyframes share-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error-box {
@@ -474,7 +588,10 @@ button:disabled {
   grid-template-columns: 42px minmax(84px, 120px) 42px;
   gap: 8px;
   max-width: 228px;
-  margin-top: 14px;
+}
+
+.centered-step-controls {
+  justify-self: center;
 }
 
 .icon-button,
@@ -485,15 +602,33 @@ button:disabled {
 
 .step-list {
   display: flex;
-  gap: 8px;
+  position: relative;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  justify-content: flex-start;
+  gap: 12px;
   list-style: none;
-  margin: 14px 0 0;
-  padding: 0 0 2px;
-  overflow-x: auto;
+  margin: 0 auto;
+  padding: 6px 12px;
+}
+
+.step-list::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 36px;
+  left: 36px;
+  height: 2px;
+  background: var(--line-strong);
+  transform: translateY(-50%);
+  z-index: 0;
 }
 
 .step-list li {
   display: flex;
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -507,6 +642,16 @@ button:disabled {
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.step-rail {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 2px 4px;
+  scrollbar-gutter: stable;
 }
 
 .step-list span {
@@ -532,14 +677,73 @@ button:disabled {
   color: var(--accent-dark);
 }
 
-.explanation {
+.trace-comment {
+  margin: 10px 0 12px;
+  color: #554d42;
+  line-height: 1.5;
+}
+
+.active-clause {
+  display: grid;
+  gap: 6px;
   margin-top: 10px;
-  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #191713;
+  padding: 12px;
+}
+
+.active-clause span {
+  color: #b9aca0;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.active-clause code {
+  color: #f8f1e8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.trace-state-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 4px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--paper-muted);
-  color: #554d42;
-  padding: 13px 14px;
-  line-height: 1.5;
+  padding: 4px;
+}
+
+.centered-toggle {
+  justify-self: center;
+}
+
+.trace-table-section {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.trace-state-toggle button {
+  min-height: 32px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.trace-state-toggle button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .detail-list {
@@ -640,6 +844,11 @@ h3 {
   background: var(--paper);
 }
 
+.trace-table {
+  display: grid;
+  min-width: 0;
+}
+
 .table-preview-list {
   display: grid;
   min-width: 0;
@@ -685,10 +894,18 @@ h3 {
 
 .pagination-controls {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 10px;
   overflow: hidden;
+}
+
+.trace-pagination-controls span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .pagination-controls button {
