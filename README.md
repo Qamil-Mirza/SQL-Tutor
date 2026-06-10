@@ -53,4 +53,8 @@ npm run build
 npm run lint
 ```
 
+## Deployment
+
+The app is a fully static Vite build deployed on Vercel; `vercel.json` pins the framework, build command, and output directory, and rewrites all paths to `index.html`. Share links are encoded entirely in the URL query string, so no backend or server-side configuration is required. To deploy, import the GitHub repository at [vercel.com/new](https://vercel.com/new) (or run `npx vercel`) and use the defaults; pushes to `main` will then deploy automatically.
+
 Read `HANDOFF.md` before changing parser, engine, visualization, starter data, or tests.
