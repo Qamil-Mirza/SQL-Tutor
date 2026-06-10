@@ -33,7 +33,7 @@ export function createShareUrl({
   origin: string
   snapshot: ShareSnapshot
 }) {
-  const url = new URL('/visualization', origin)
+  const url = new URL('/query', origin)
   url.searchParams.set(shareParamName, encodeShareSnapshot(snapshot))
   return url.toString()
 }

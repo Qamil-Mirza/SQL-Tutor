@@ -86,6 +86,21 @@ describe('executeQuery', () => {
     expect(rows.map((row) => row.values['u.name'])).toEqual(['Ada', 'Ben'])
   })
 
+  it('drops trimmed rows from the limit step after view and marks them removed in before', () => {
+    const steps = executeQuery(parseQuery('SELECT u.name FROM users AS u LIMIT 2'), initialTables)
+    const limitStep = steps.find((step) => step.kind === 'limit')!
+    const before = limitStep.before as AliasedRow[]
+    const after = limitStep.after as AliasedRow[]
+
+    expect(before).toHaveLength(4)
+    expect(after).toHaveLength(2)
+    expect(after.some((row) => row.id.includes('__removed'))).toBe(false)
+    expect(limitStep.highlights).toContainEqual({
+      kind: 'removed',
+      rowIds: before.slice(2).map((row) => row.id),
+    })
+  })
+
   it('orders grouped results by an aggregate before applying limit', () => {
     const musicTables: Table[] = [
       {

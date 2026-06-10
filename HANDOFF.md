@@ -10,7 +10,7 @@ Build an educational SQL logical execution visualizer for CSM C88C. The design p
 - Arithmetic expressions with `+`, `-`, `*`, and `/`
 - Required `FROM table`, with optional `AS alias` or bare alias
 - Optional single inner `JOIN table AS alias ON condition` or comma join `FROM table_a, table_b` / `FROM table AS alias, table AS alias`
-- Optional `WHERE` with simple comparisons joined by `AND`
+- Optional `WHERE` with simple comparisons joined by `AND` (`OR` is rejected with a friendly error instead of being silently misparsed)
 - Optional `GROUP BY`
 - Optional `HAVING`
 - Optional `ORDER BY` with `ASC` or `DESC`
@@ -58,7 +58,7 @@ Step generation follows:
 4. `GROUP BY`: create group buckets, or one implicit group when aggregates are selected.
 5. `HAVING`: filter groups after aggregate values are available.
 6. `SELECT`: project requested columns, wildcard columns, and aggregate outputs.
-7. `LIMIT`: keep the first `n` projected rows and fade trimmed rows in the visualization.
+7. `LIMIT`: keep the first `n` projected rows. Trimmed rows are highlighted as removed in the before view and dropped from the after view, matching `WHERE` behavior.
 8. `Result`: show the final output only.
 
 ## Visual Conventions
@@ -91,6 +91,8 @@ Table SQL tests cover `CREATE TABLE`, `INSERT INTO`, serialization, and friendly
 UI tests cover starter query execution, step navigation, self-join visualization, user-defined table SQL execution, table creation mode switching, direct cell editing, and friendly error rendering.
 
 Share snapshot tests cover compressed payload round trips and malformed payload rejection. UI tests cover direct shared-link entry, immutable reload behavior after local edits, and visible share-link generation.
+
+C88C curriculum tests in `src/domain/c88c.test.ts` run the canonical Berkeley dogs/parents/sizes dataset through the question shapes the course actually asks: wildcard selects, string and numeric filters, `ORDER BY`/`LIMIT`, comma joins with unqualified columns, sibling and grandparent self joins, inequality joins against size ranges, explicit `JOIN ... ON`, aggregates, `GROUP BY`, `HAVING`, and ordering by aggregate aliases. They also pin down that unsupported course patterns (`OR`, `DISTINCT`, subqueries, outer joins, `SELECT` without `FROM`) fail with friendly parse errors rather than silently wrong results.
 
 Commands:
 

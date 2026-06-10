@@ -101,6 +101,11 @@ function textForClause(sql: string, clauses: Record<string, { start: number; end
 }
 
 function parseConditions(text: string): Condition[] {
+  // Mask quoted strings so an OR inside a value (e.g. 'rock or pop') is not rejected.
+  const withoutStrings = text.replace(/'[^']*'|"[^"]*"/g, "''")
+  if (/\bOR\b/i.test(withoutStrings)) {
+    throw new QueryParseError('OR is not supported in this visualizer. Combine comparisons with AND.')
+  }
   return text.split(/\s+AND\s+/i).map(parseCondition)
 }
 
@@ -151,7 +156,8 @@ function parseExpression(text: string): Expression {
     const fn = aggregate[1].toUpperCase() as AggregateName
     return { type: 'aggregate', fn, column: aggregate[2] === '*' ? undefined : parseExpression(aggregate[2]), label: value }
   }
-  if (/^'.*'$/.test(value) || /^".*"$/.test(value)) return { type: 'literal', value: value.slice(1, -1), label: value }
+  // Disallow inner quotes so text like 'a' OR x = 'b' cannot collapse into one literal.
+  if (/^'[^']*'$/.test(value) || /^"[^"]*"$/.test(value)) return { type: 'literal', value: value.slice(1, -1), label: value }
   if (/^-?\d+(?:\.\d+)?$/.test(value)) return { type: 'literal', value: Number(value), label: value }
   if (/^null$/i.test(value)) return { type: 'literal', value: null, label: value }
   const column = value.match(/^(?:(\w+)\.)?(\w+)$/)

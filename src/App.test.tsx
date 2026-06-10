@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
+import { starterQuery } from './domain/samples'
 import { createShareUrl } from './domain/shareSnapshot'
 
 afterEach(() => {
@@ -546,7 +547,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
   })
 
-  it('opens a shared link directly on the trace page', () => {
+  it('opens a shared link directly on the query page', () => {
     const shareUrl = createShareUrl({
       origin: window.location.origin,
       snapshot: {
@@ -559,9 +560,9 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(window.location.pathname).toBe('/visualization')
-    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/query')
+    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
     expect(screen.getAllByText('Miso').length).toBeGreaterThan(0)
   })
 
@@ -578,7 +579,6 @@ describe('App', () => {
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
 
     const { unmount } = render(<App />)
-    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
     await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT p.id FROM pets AS p')
     expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.id FROM pets AS p')
@@ -587,7 +587,6 @@ describe('App', () => {
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
     render(<App />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
   })
 
@@ -603,14 +602,14 @@ describe('App', () => {
     await new Promise((resolve) => setTimeout(resolve, 1100))
 
     const shareLink = screen.getByRole('textbox', { name: 'Share link' })
-    expect((shareLink as HTMLInputElement).value).toContain('/visualization?share=')
+    expect((shareLink as HTMLInputElement).value).toContain('/query?share=')
 
     const sharedLocation = new URL((shareLink as HTMLInputElement).value)
     unmount()
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
     render(<App />)
-    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue(starterQuery)
   })
 
   it('dismisses the share modal with the close button', async () => {
@@ -640,6 +639,7 @@ describe('App', () => {
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
     render(<App />)
 
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
   })
 })

@@ -242,12 +242,12 @@ function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): Ini
           isSharedSession: true,
         }
       }
-      window.history.replaceState({}, '', `/visualization${window.location.search}`)
+      window.history.replaceState({}, '', `/query${window.location.search}`)
       return {
         tables,
         tableSql: sharedSnapshot.tableSql,
         sql: sharedSnapshot.sql,
-        path: '/visualization',
+        path: '/query',
         isSharedSession: true,
       }
     }
@@ -599,7 +599,7 @@ function TableView({ rows, highlights = [] }: { rows: AliasedRow[]; highlights?:
           <tbody>
             {visibleRows.map((row) => (
               <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
-                <td><span className="alias-badge">{row.id.replace('__removed', '')}</span></td>
+                <td><span className="alias-badge">{row.id}</span></td>
                 {columns.map((column) => (
                   <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
                 ))}
@@ -765,8 +765,7 @@ function RawTableView({ columns, rows }: { columns: string[]; rows: Record<strin
 }
 
 function isRemovedRow(rowId: string, removedRows: Set<string>) {
-  const cleanId = rowId.replace('__removed', '')
-  return rowId.includes('__removed') || removedRows.has(cleanId) || removedRows.has(rowId)
+  return removedRows.has(rowId)
 }
 
 function isSelectedColumn(column: string, selectedColumns: Set<string>) {

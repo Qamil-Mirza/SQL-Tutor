@@ -187,7 +187,7 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
       clause: `LIMIT ${ast.limit}`,
       explanation: `Keep only the first ${ast.limit} row(s) after projection.`,
       before,
-      after: markRemoved(before, rows),
+      after: rows,
       details: [`${Math.max(0, before.length - rows.length)} row(s) trimmed.`],
       highlights: [
         { kind: 'kept', rowIds: rows.map((row) => row.id) },
@@ -442,9 +442,4 @@ function wildcardEntries(row: AliasedRow): [string, Scalar][] {
   const columnNames = unqualified.map(([key]) => key)
   if (new Set(columnNames).size !== columnNames.length) return entries
   return unqualified
-}
-
-function markRemoved(before: AliasedRow[], kept: AliasedRow[]): AliasedRow[] {
-  const keptIds = new Set(kept.map((row) => row.id))
-  return before.map((row) => (keptIds.has(row.id) ? row : { ...row, id: `${row.id}__removed` }))
 }
