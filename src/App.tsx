@@ -517,7 +517,6 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
           <code>{step.clause}</code>
         </div>
       ) : null}
-      {step.sortSummaries?.length ? <SortSummaryPanel summaries={step.sortSummaries} /> : null}
       <section className="trace-table-section" aria-label="Trace table state">
         {hasBefore ? (
           <div className="trace-state-toggle centered-toggle" aria-label="Trace table state selector">
@@ -540,26 +539,6 @@ function SourceDataView({ sources, highlights }: { sources: NonNullable<Executio
           <h4>{source.label}</h4>
           <TableView rows={source.rows} highlights={highlights} />
         </section>
-      ))}
-    </div>
-  )
-}
-
-function SortSummaryPanel({ summaries }: { summaries: NonNullable<ExecutionStep['sortSummaries']> }) {
-  return (
-    <div className="sort-summary-panel" aria-label="ORDER BY sort keys">
-      {summaries.map((summary) => (
-        <div className="sort-summary-row" key={summary.rowId}>
-          <span className="rank-chip">{summary.beforeRank} -&gt; {summary.afterRank}</span>
-          <span className="alias-badge">{summary.rowId}</span>
-          <div className="sort-key-list">
-            {summary.keys.map((key) => (
-              <span className="sort-key-chip" key={`${summary.rowId}-${key.label}`}>
-                {key.label} {key.direction} = {formatCell(key.value)}
-              </span>
-            ))}
-          </div>
-        </div>
       ))}
     </div>
   )

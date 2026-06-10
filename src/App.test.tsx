@@ -551,7 +551,7 @@ describe('App', () => {
     expect(screen.getByLabelText('Group free')).toHaveClass('removed-group')
   })
 
-  it('shows sort keys and rank movement on ORDER BY steps', async () => {
+  it('does not show per-row sort key and rank movement on ORDER BY steps', async () => {
     render(<App />)
     await advanceToQueryPage()
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
@@ -561,8 +561,9 @@ describe('App', () => {
     await userEvent.click(screen.getByLabelText('Next step'))
 
     expect(screen.getByRole('heading', { name: 'ORDER BY' })).toBeInTheDocument()
-    expect(screen.getByText('u.name DESC = Dina')).toBeInTheDocument()
-    expect(screen.getByText('4 -> 1')).toBeInTheDocument()
+    expect(screen.queryByLabelText('ORDER BY sort keys')).not.toBeInTheDocument()
+    expect(screen.queryByText('u.name DESC = Dina')).not.toBeInTheDocument()
+    expect(screen.queryByText('4 -> 1')).not.toBeInTheDocument()
   })
 
   it('shows the visualization page as a focused route with a back action', async () => {
