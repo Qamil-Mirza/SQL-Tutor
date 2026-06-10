@@ -37,6 +37,27 @@ describe('App', () => {
     expect(screen.queryByLabelText('Table SQL')).not.toBeInTheDocument()
   })
 
+  it('formats table SQL from a button and before applying tables', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso');")
+    await userEvent.click(screen.getByRole('button', { name: 'Format table SQL' }))
+
+    expect(screen.getByLabelText('Table SQL')).toHaveValue([
+      'CREATE TABLE pets (id, name);',
+      "INSERT INTO pets VALUES (1, 'Miso');",
+    ].join('\n'))
+
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso');")
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+
+    expect(screen.getByLabelText('Table SQL')).toHaveValue([
+      'CREATE TABLE pets (id, name);',
+      "INSERT INTO pets VALUES (1, 'Miso');",
+    ].join('\n'))
+  })
+
   it('stays on the table page when table SQL is invalid', async () => {
     render(<App />)
     await userEvent.clear(screen.getByLabelText('Table SQL'))
@@ -110,6 +131,32 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
     await userEvent.click(screen.getByLabelText('Next step'))
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
+  })
+
+  it('formats query SQL from a button and before running the query', async () => {
+    render(<App />)
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), "select u.name as person from users as u where u.tier = 'pro'")
+    await userEvent.click(screen.getByRole('button', { name: 'Format query SQL' }))
+
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue([
+      'SELECT u.name AS person',
+      'FROM users AS u',
+      "WHERE u.tier = 'pro'",
+    ].join('\n'))
+
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(screen.getByLabelText('SQL query editor'), "select u.name as person from users as u where u.tier = 'pro'")
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+
+    expect(window.location.pathname).toBe('/visualization')
+    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+    expect(screen.getByLabelText('SQL query editor')).toHaveValue([
+      'SELECT u.name AS person',
+      'FROM users AS u',
+      "WHERE u.tier = 'pro'",
+    ].join('\n'))
   })
 
   it('uses the brand lockup to return home to table creation', async () => {
