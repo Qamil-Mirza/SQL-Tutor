@@ -600,9 +600,9 @@ describe('App', () => {
     expect(screen.getByText('Preparing share link')).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Share link' })).not.toBeInTheDocument()
 
-    await new Promise((resolve) => setTimeout(resolve, 2100))
+    await new Promise((resolve) => setTimeout(resolve, 1100))
 
-    const shareLink = await screen.findByRole('textbox', { name: 'Share link' })
+    const shareLink = screen.getByRole('textbox', { name: 'Share link' })
     expect((shareLink as HTMLInputElement).value).toContain('/visualization?share=')
 
     const sharedLocation = new URL((shareLink as HTMLInputElement).value)
@@ -632,9 +632,9 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
-    await new Promise((resolve) => setTimeout(resolve, 2100))
+    await new Promise((resolve) => setTimeout(resolve, 1100))
 
-    const shareLink = await screen.findByRole('textbox', { name: 'Share link' })
+    const shareLink = screen.getByRole('textbox', { name: 'Share link' })
     const sharedLocation = new URL((shareLink as HTMLInputElement).value)
     unmount()
     window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)

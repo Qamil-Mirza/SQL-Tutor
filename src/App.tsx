@@ -74,7 +74,7 @@ function App() {
       setShareModal((current) => (
         current.isOpen ? { ...current, isLoading: false } : current
       ))
-    }, 2000)
+    }, 1000)
     return () => window.clearTimeout(timer)
   }, [shareModal.isOpen, shareModal.isLoading])
 
