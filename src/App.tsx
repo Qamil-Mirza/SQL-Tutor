@@ -4,6 +4,7 @@ import { executeQuery } from './domain/engine'
 import { parseQuery } from './domain/parser'
 import { initialTables, starterQuery } from './domain/samples'
 import { createShareUrl, readShareSnapshot } from './domain/shareSnapshot'
+import { formatSql } from './domain/sqlFormatter'
 import { parseTableSql, serializeTables } from './domain/tableSql'
 import type { AliasedRow, ExecutionStep, Group, Highlight, Scalar, Table } from './domain/types'
 
@@ -95,8 +96,9 @@ function App() {
   }
 
   function handleRun(nextSql = sql, nextTables = tables) {
-    const result = run(nextSql, nextTables)
-    setSql(nextSql)
+    const formattedSql = formatSql(nextSql)
+    const result = run(formattedSql, nextTables)
+    setSql(formattedSql)
     setError(result.error)
     setSteps(result.steps)
     setStepIndex(0)
@@ -123,15 +125,26 @@ function App() {
   }
 
   function applyTableSql() {
+    const formattedTableSql = formatSql(tableSql)
     try {
-      const nextTables = parseTableSql(tableSql)
+      const nextTables = parseTableSql(formattedTableSql)
+      setTableSql(formattedTableSql)
       setTables(nextTables)
       setTableError(undefined)
       return nextTables
     } catch (error) {
+      setTableSql(formattedTableSql)
       setTableError(error instanceof Error ? error.message : 'The table SQL could not be applied.')
       return undefined
     }
+  }
+
+  function handleFormatTableSql() {
+    setTableSql(formatSql(tableSql))
+  }
+
+  function handleFormatQuerySql() {
+    setSql(formatSql(sql))
   }
 
   function handleApplyTableSql() {
@@ -178,16 +191,17 @@ function App() {
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="workflow-page query-route" aria-label="Query page">
           <div className="pane-heading compact-heading">
-            <h1>Query</h1>
             <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
               Back to tables
             </button>
+            <h1>Query</h1>
           </div>
           <div className="query-page-grid">
             <QueryEditor
               sql={sql}
               error={error}
               onSqlChange={setSql}
+              onFormat={handleFormatQuerySql}
               onRun={() => handleRun()}
               onShare={handleShare}
             />
@@ -217,6 +231,7 @@ function App() {
           tableSql={tableSql}
           tableError={tableError}
           onTableSqlChange={setTableSql}
+          onFormatTableSql={handleFormatTableSql}
           onApplyTableSql={handleApplyTableSql}
           onContinue={handleContinueToQuery}
         />
@@ -394,12 +409,14 @@ function QueryEditor({
   sql,
   error,
   onSqlChange,
+  onFormat,
   onRun,
   onShare,
 }: {
   sql: string
   error?: string
   onSqlChange: (value: string) => void
+  onFormat: () => void
   onRun: () => void
   onShare: () => void
 }) {
@@ -421,12 +438,17 @@ function QueryEditor({
           spellCheck={false}
         />
       </div>
-      <button className="primary-button" type="button" onClick={onRun}>
-        Run Query
-      </button>
-      <button className="secondary-button" type="button" onClick={onShare}>
-        Share
-      </button>
+      <div className="editor-actions">
+        <button className="primary-button" type="button" onClick={onRun}>
+          Run Query
+        </button>
+        <button className="secondary-button" type="button" onClick={onFormat} aria-label="Format query SQL">
+          Format
+        </button>
+        <button className="secondary-button" type="button" onClick={onShare}>
+          Share
+        </button>
+      </div>
       {error ? <div className="error-box" role="alert">{error}</div> : null}
     </section>
   )
@@ -637,6 +659,7 @@ function TableBuilder({
   tableSql,
   tableError,
   onTableSqlChange,
+  onFormatTableSql,
   onApplyTableSql,
   onContinue,
 }: {
@@ -644,6 +667,7 @@ function TableBuilder({
   tableSql: string
   tableError?: string
   onTableSqlChange: (value: string) => void
+  onFormatTableSql: () => void
   onApplyTableSql: () => void
   onContinue: () => void
 }) {
@@ -665,9 +689,14 @@ function TableBuilder({
           onChange={(event) => onTableSqlChange(event.target.value)}
           spellCheck={false}
         />
-        <button className="secondary-button" type="button" onClick={onApplyTableSql}>
-          Create Tables
-        </button>
+        <div className="editor-actions">
+          <button className="secondary-button" type="button" onClick={onApplyTableSql}>
+            Create Tables
+          </button>
+          <button className="secondary-button" type="button" onClick={onFormatTableSql} aria-label="Format table SQL">
+            Format
+          </button>
+        </div>
         <button className="primary-button" type="button" onClick={onContinue}>
           Continue to Query
         </button>
