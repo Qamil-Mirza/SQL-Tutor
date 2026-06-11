@@ -40,21 +40,31 @@ describe('App', () => {
   it('formats table SQL from a button and before applying tables', async () => {
     render(<App />)
     await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso');")
+    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso'), (2, 'Nori');")
     await userEvent.click(screen.getByRole('button', { name: 'Format table SQL' }))
 
     expect(screen.getByLabelText('Table SQL')).toHaveValue([
-      'CREATE TABLE pets (id, name);',
-      "INSERT INTO pets VALUES (1, 'Miso');",
+      'CREATE TABLE pets (',
+      '    id,',
+      '    name',
+      ');',
+      'INSERT INTO pets',
+      "VALUES (1, 'Miso'),",
+      "       (2, 'Nori');",
     ].join('\n'))
 
     await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso');")
+    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso'), (2, 'Nori');")
     await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
 
     expect(screen.getByLabelText('Table SQL')).toHaveValue([
-      'CREATE TABLE pets (id, name);',
-      "INSERT INTO pets VALUES (1, 'Miso');",
+      'CREATE TABLE pets (',
+      '    id,',
+      '    name',
+      ');',
+      'INSERT INTO pets',
+      "VALUES (1, 'Miso'),",
+      "       (2, 'Nori');",
     ].join('\n'))
   })
 
@@ -141,9 +151,9 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Format query SQL' }))
 
     expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT   u.name AS person',
-      'FROM     users AS u',
-      "WHERE    u.tier = 'pro'",
+      'SELECT u.name AS person',
+      '  FROM users AS u',
+      " WHERE u.tier = 'pro'",
     ].join('\n'))
 
     await userEvent.clear(screen.getByLabelText('SQL query editor'))
@@ -153,9 +163,9 @@ describe('App', () => {
     expect(window.location.pathname).toBe('/visualization')
     await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
     expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT   u.name AS person',
-      'FROM     users AS u',
-      "WHERE    u.tier = 'pro'",
+      'SELECT u.name AS person',
+      '  FROM users AS u',
+      " WHERE u.tier = 'pro'",
     ].join('\n'))
   })
 
