@@ -169,14 +169,14 @@ describe('App', () => {
     ].join('\n'))
   })
 
-  it('places the query back button before the query heading', async () => {
+  it('places the query heading before the back button', async () => {
     render(<App />)
     await advanceToQueryPage()
 
     const backButton = screen.getByRole('button', { name: 'Back to tables' })
     const queryHeading = screen.getByRole('heading', { name: 'Query' })
 
-    expect(Boolean(backButton.compareDocumentPosition(queryHeading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(Boolean(queryHeading.compareDocumentPosition(backButton) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
   })
 
   it('uses the brand lockup to return home to table creation', async () => {
@@ -365,6 +365,43 @@ describe('App', () => {
     await userEvent.click(screen.getByLabelText('Next step'))
     expect(screen.getByRole('heading', { name: 'JOIN' })).toBeInTheDocument()
     expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('JOIN employees AS m ON e.manager_id = m.id')
+  })
+
+  it('shows the right source table on the explicit JOIN before view', async () => {
+    render(<App />)
+    await userEvent.clear(screen.getByLabelText('Table SQL'))
+    await userEvent.type(
+      screen.getByLabelText('Table SQL'),
+      [
+        'CREATE TABLE User_Data (User_ID, Top_Genre);',
+        "INSERT INTO User_Data VALUES ('tiffany123', 'Pop'), ('aidan456', 'Afrobeats');",
+        'CREATE TABLE Survey_Data (Username, Study);',
+        "INSERT INTO Survey_Data VALUES ('tiffany123', 'No'), ('aidan456', 'Yes');",
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
+    await advanceToQueryPage()
+    await userEvent.clear(screen.getByLabelText('SQL query editor'))
+    await userEvent.type(
+      screen.getByLabelText('SQL query editor'),
+      [
+        'SELECT u.Top_Genre',
+        'FROM User_Data AS u',
+        'JOIN Survey_Data AS s ON u.User_ID = s.Username',
+        "WHERE s.Study = 'No'",
+        'GROUP BY u.Top_Genre',
+        'ORDER BY COUNT(*) DESC',
+        'LIMIT 1',
+      ].join('{enter}'),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+    await userEvent.click(screen.getByLabelText('Next step'))
+
+    expect(screen.getByRole('heading', { name: 'JOIN' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'User_Data as u' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Survey_Data as s' })).toBeInTheDocument()
+    expect(screen.getByText('s.Username')).toBeInTheDocument()
+    expect(screen.getByText('s.Study')).toBeInTheDocument()
   })
 
   it('shows friendly errors', async () => {

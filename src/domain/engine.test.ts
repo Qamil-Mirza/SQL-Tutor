@@ -432,6 +432,18 @@ describe('executeQuery', () => {
     ])
   })
 
+  it('exposes both source tables before explicit JOIN pairing', () => {
+    const steps = executeQuery(parseQuery('SELECT u.name, l.artist FROM users AS u JOIN listening AS l ON u.id = l.user_id'), initialTables)
+    const joinStep = steps.find((step) => step.kind === 'join')!
+
+    expect(joinStep.display?.beforeLabel).toBe('Before')
+    expect(joinStep.sources?.map((source) => source.label)).toEqual(['users as u', 'listening as l'])
+    expect(joinStep.sources?.map((source) => source.rows.map((row) => row.id))).toEqual([
+      ['u:users-1', 'u:users-2', 'u:users-3', 'u:users-4'],
+      ['l:listening-1', 'l:listening-2', 'l:listening-3', 'l:listening-4', 'l:listening-5'],
+    ])
+  })
+
   it('adds the active SQL clause to trace steps', () => {
     const steps = executeQuery(
       parseQuery("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2"),

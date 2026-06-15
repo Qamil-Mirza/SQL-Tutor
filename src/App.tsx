@@ -191,10 +191,10 @@ function App() {
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="workflow-page query-route" aria-label="Query page">
           <div className="pane-heading compact-heading">
+            <h1>Query</h1>
             <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
               Back to tables
             </button>
-            <h1>Query</h1>
           </div>
           <div className="query-page-grid">
             <QueryEditor
@@ -527,6 +527,7 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
   const afterLabel = step.display?.afterLabel ?? 'After'
   const activeLabel = view === 'before' ? beforeLabel : afterLabel
   const activeData = view === 'before' ? step.before : step.after
+  const showSources = Boolean(step.sources?.length && (view === 'before' || step.kind === 'from'))
 
   return (
     <article>
@@ -547,7 +548,7 @@ function VisualizationPanel({ step }: { step: ExecutionStep }) {
           </div>
         ) : null}
         <h3>{activeLabel}</h3>
-        {view === 'after' && step.sources?.length ? <SourceDataView sources={step.sources} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
+        {showSources ? <SourceDataView sources={step.sources!} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
       </section>
     </article>
   )
