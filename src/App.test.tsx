@@ -169,14 +169,14 @@ describe('App', () => {
     ].join('\n'))
   })
 
-  it('places the query back button before the query heading', async () => {
+  it('places the query heading before the back button', async () => {
     render(<App />)
     await advanceToQueryPage()
 
     const backButton = screen.getByRole('button', { name: 'Back to tables' })
     const queryHeading = screen.getByRole('heading', { name: 'Query' })
 
-    expect(Boolean(backButton.compareDocumentPosition(queryHeading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(Boolean(queryHeading.compareDocumentPosition(backButton) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
   })
 
   it('uses the brand lockup to return home to table creation', async () => {

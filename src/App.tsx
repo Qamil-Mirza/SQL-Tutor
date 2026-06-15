@@ -191,10 +191,10 @@ function App() {
       <AppShell path={path} onNavigate={handleShellNavigate}>
         <section className="workflow-page query-route" aria-label="Query page">
           <div className="pane-heading compact-heading">
+            <h1>Query</h1>
             <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
               Back to tables
             </button>
-            <h1>Query</h1>
           </div>
           <div className="query-page-grid">
             <QueryEditor

@@ -20,6 +20,14 @@
   min-height: 100vh;
   background: var(--paper-soft);
   color: var(--ink);
+  overflow-x: clip;
+}
+
+.app-shell,
+.app-shell *,
+.app-shell *::before,
+.app-shell *::after {
+  box-sizing: border-box;
 }
 
 .app-shell h1,
@@ -47,6 +55,7 @@
 .route-tabs {
   display: inline-flex;
   flex: 0 0 auto;
+  min-width: 0;
   gap: 4px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -55,6 +64,7 @@
 }
 
 .route-tabs button {
+  min-width: 0;
   min-height: 32px;
   border: 0;
   border-radius: 8px;
@@ -136,6 +146,7 @@
   font-family: var(--font-display);
   font-weight: 800;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .brand-subtitle {
@@ -328,6 +339,7 @@
 
 .section-heading-row {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -393,6 +405,7 @@ textarea {
 .sql-editor-shell {
   position: relative;
   min-height: 132px;
+  min-width: 0;
   border-radius: 10px;
   background: var(--code);
 }
@@ -544,6 +557,9 @@ button:disabled {
 .share-modal {
   position: relative;
   width: min(100%, 520px);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   border-radius: 8px;
   background: var(--paper);
@@ -628,6 +644,7 @@ button:disabled {
   display: grid;
   grid-template-columns: 42px minmax(84px, 120px) 42px;
   gap: 8px;
+  width: min(100%, 228px);
   max-width: 228px;
 }
 
@@ -751,6 +768,7 @@ button:disabled {
 .trace-state-toggle {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(92px, 1fr));
+  max-width: 100%;
   gap: 4px;
   margin-top: 4px;
   border: 1px solid var(--line);
@@ -865,26 +883,27 @@ h3 {
 }
 
 .preview-header h3 {
-  overflow: hidden;
   margin: 2px 0 0;
   color: var(--ink);
   font-size: 18px;
   letter-spacing: 0;
-  text-overflow: ellipsis;
   text-transform: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .preview-count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   margin: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 750;
+  line-height: 1.25;
+  text-align: right;
 }
 
 .pagination-controls {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -1055,7 +1074,19 @@ th.selected-column {
     position: static;
     align-items: flex-start;
     flex-direction: column;
-    padding: 14px 16px;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .brand-lockup {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
   }
 
   .route-tabs {
@@ -1064,6 +1095,8 @@ th.selected-column {
 
   .route-tabs button {
     flex: 1;
+    min-height: 40px;
+    padding: 7px 8px;
   }
 
   .brand-subtitle {
@@ -1073,14 +1106,243 @@ th.selected-column {
   .build-pane,
   .trace-pane,
   .workflow-page {
-    padding: 16px;
+    padding: 14px;
+  }
+
+  .workflow-page,
+  .visualization-route {
+    min-height: auto;
+  }
+
+  .query-page-grid,
+  .tables-route,
+  .query-route {
+    gap: 12px;
+  }
+
+  .compact-heading {
+    align-items: flex-start;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .query-route .compact-heading {
+    flex-direction: column;
+  }
+
+  .table-context,
+  .table-builder,
+  .query-card,
+  .trace-card {
+    border-radius: 10px;
+  }
+
+  .table-context,
+  .table-builder,
+  .query-card,
+  .trace-card {
+    padding: 14px;
   }
 
   .pane-heading h1 {
-    font-size: 26px;
+    font-size: 24px;
+    line-height: 1.12;
+  }
+
+  .trace-title-section h1,
+  .table-builder h2,
+  .query-card h2,
+  .visualization-panel h2 {
+    font-size: 20px;
+  }
+
+  textarea {
+    min-height: 132px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .table-sql-editor {
+    min-height: 170px;
+  }
+
+  #sql-editor,
+  .sql-editor-shell {
+    min-height: 156px;
+  }
+
+  .sql-highlight {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .editor-actions > button {
+    flex-basis: 100%;
+    min-height: 42px;
+  }
+
+  .back-button {
+    min-height: 40px;
+  }
+
+  .preview-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .preview-count {
+    text-align: left;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .pagination-controls button {
+    flex: 1 1 120px;
+    min-height: 40px;
+  }
+
+  .trace-pagination-controls span {
+    flex: 1 0 100%;
+    margin-right: 0;
+  }
+
+  .stepper-card,
+  .trace-stepper-card {
+    justify-items: stretch;
   }
 
   .step-controls {
+    grid-template-columns: 44px minmax(88px, 1fr) 44px;
+    width: min(100%, 240px);
     max-width: none;
+  }
+
+  .icon-button,
+  .reset-button {
+    min-height: 42px;
+  }
+
+  .step-rail {
+    padding-bottom: 6px;
+  }
+
+  .step-list {
+    margin: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .step-list li {
+    max-width: 138px;
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .trace-state-toggle {
+    width: min(100%, 320px);
+  }
+
+  .source-grid,
+  .group-grid {
+    gap: 12px;
+  }
+
+  .group-bucket {
+    padding: 10px;
+  }
+
+  th,
+  td {
+    padding: 8px 9px;
+  }
+
+  .modal-backdrop {
+    align-items: start;
+    padding: 12px;
+  }
+
+  .share-modal {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 18px;
+  }
+
+  .share-modal h2 {
+    margin-right: 34px;
+    font-size: 21px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-topbar {
+    padding: 10px;
+  }
+
+  .brand-title {
+    font-size: 15px;
+  }
+
+  .route-tabs {
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .route-tabs button {
+    min-height: 38px;
+    padding: 6px 5px;
+    font-size: 12px;
+  }
+
+  .build-pane,
+  .trace-pane,
+  .workflow-page {
+    padding: 10px;
+  }
+
+  .table-context,
+  .table-builder,
+  .query-card,
+  .trace-card {
+    padding: 12px;
+  }
+
+  .field-label {
+    margin-top: 12px;
+  }
+
+  .table-preview-list {
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .preview-header {
+    display: grid;
+  }
+
+  .pagination-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trace-pagination-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination-controls button {
+    width: 100%;
+  }
+
+  .trace-state-toggle {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .aggregate-chip,
+  .condition-chip {
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 }
