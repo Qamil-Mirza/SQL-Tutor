@@ -76,6 +76,11 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
         : `Pair every row from ${ast.from.alias} with every row from ${ast.join.alias}.`,
       before,
       after: rows,
+      sources: [
+        { label: `${fromTable.name} as ${ast.from.alias}`, rows: before },
+        { label: `${rightTable.name} as ${ast.join.alias}`, rows: rightRows },
+      ],
+      display: { beforeLabel: 'Before' },
       details,
       highlights: [
         { kind: 'matched', rowIds: rows.map((row) => row.id) },
