@@ -517,7 +517,6 @@ describe('executeQuery', () => {
 
     expect(pairStep.title).toBe('Cross join')
     expect(pairStep.clause).toBe('FROM friends, animals')
-    expect(pairStep.details).toBeUndefined()
   })
 
   it('visualizes each AND condition as a separate where step', () => {
@@ -669,7 +668,6 @@ describe('executeQuery', () => {
       'Sorted 3 rows by u.name (highest first).',
       'Nothing trimmed: 3 rows, limit is 5.',
     ])
-    expect(steps[1].details).toEqual(['u1 ↔ l1, l2', 'u2 ↔ l3', 'u3 ↔ l4', 'u4 ↔ l5'])
     expect(steps[1].clause).toBe('JOIN listening AS l ON u.id = l.user_id')
     // After WHERE the rows are Ada (55), Ada (35), Chen (75) → #1, #2, #3.
     // ORDER BY u.name DESC gives Chen, Ada, Ada, and LIMIT 5 keeps all three.

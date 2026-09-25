@@ -59,7 +59,7 @@ Share snapshot helpers live in `src/domain/shareSnapshot.ts`. Share links compre
 - `QueryAST`: parsed query object consumed by the engine; `clauses` (`QueryClauses`) holds each clause's raw, whitespace-normalized source text (keyword included) for the pinned-query highlight.
 - `Condition`: binary comparison between expressions, or an `IS`/`IS NOT` null check.
 - `Expression`: column, literal, wildcard, binary arithmetic, or aggregate expression.
-- `ExecutionStep`: one logical execution step, with `summary` (a concrete sentence describing what happened), an optional `clause` (the raw text to highlight in the pinned query), optional `before` and required `after` (rows or groups), optional `sources` (JOIN/FROM source tables for the sources view), optional `details` (JOIN-only match lines, e.g. `"u1 ↔ l1, l2"`), `highlights` (`Highlight[]`), and optional `sortSummaries` (`ORDER BY` only).
+- `ExecutionStep`: one logical execution step, with `summary` (a concrete sentence describing what happened), an optional `clause` (the raw text to highlight in the pinned query), optional `before` and required `after` (rows or groups), optional `sources` (JOIN/FROM source tables for the sources view), `highlights` (`Highlight[]`), and optional `sortSummaries` (`ORDER BY` only).
 - `Highlight`: `kind` of `'removed' | 'selected' | 'matched' | 'unmatched'` plus the `rowIds`, `columnKeys`, or `groupIds` it applies to.
 - `SortSummary`: per-row before/after rank and the sort keys used, for the `ORDER BY` step's rank badges.
 
@@ -112,7 +112,7 @@ Table SQL tests (`tableSql.test.ts`) cover `CREATE TABLE`/`INSERT INTO` parsing 
 
 `src/ui/trace/TableView.test.tsx` covers rendering every row at 12 or fewer, the 8-row preview plus "Show all"/"Show fewer" toggle above that, column ordering and row/column highlighting, rank badges and off-table sort keys, and the empty-rows message.
 
-`src/ui/trace/StepPanel.test.tsx` covers the side-by-side Before/After layout with faded removed rows for `WHERE`, the "Final result" label on the last step, the JOIN sources/key-columns/match-list view, group cards with HAVING verdicts and one card per `selectGroup` step, the "No groups remain." Before state of an empty grouped SELECT, selected-column highlights in the SELECT result, and `findClauseRange`'s whitespace/case tolerance. `src/ui/trace/Timeline.test.tsx` checks that changing step never scrolls the page (the timeline only scrolls its own pill row).
+`src/ui/trace/StepPanel.test.tsx` covers the side-by-side Before/After layout with faded removed rows for `WHERE`, the "Final result" label on the last step, the JOIN sources/key-columns view, group cards with HAVING verdicts and one card per `selectGroup` step, the "No groups remain." Before state of an empty grouped SELECT, selected-column highlights in the SELECT result, and `findClauseRange`'s whitespace/case tolerance. `src/ui/trace/Timeline.test.tsx` checks that changing step never scrolls the page (the timeline only scrolls its own pill row).
 
 `src/ui/highlightSql.test.tsx` covers coloring keywords outside strings and marking string literals in the editor's syntax highlighter.
 

@@ -872,19 +872,6 @@ th.selected-column {
   white-space: nowrap;
 }
 
-.match-list {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9rem;
-  color: var(--ink);
-}
-
 .sql-string { color: #f4d35e; }
 
 .band-verdict-line { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }

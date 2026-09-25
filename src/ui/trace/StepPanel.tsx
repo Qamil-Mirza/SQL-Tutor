@@ -35,7 +35,7 @@ function renderBefore(step: ExecutionStep): ReactNode {
     case 'from':
       return null
     case 'join':
-      return <SourcesView sources={step.sources ?? []} highlights={step.highlights} matchList={step.details} />
+      return <SourcesView sources={step.sources ?? []} highlights={step.highlights} />
     case 'having':
       return (
         <GroupCards

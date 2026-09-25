@@ -93,7 +93,6 @@ export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
         { label: fromLabel, rows: before },
         { label: rightLabel, rows: rightRows },
       ],
-      details: isComma ? undefined : [...leftMatches].map(([leftId, rightIds]) => `${leftId} ↔ ${rightIds.join(', ')}`),
       highlights: isComma
         ? []
         : [

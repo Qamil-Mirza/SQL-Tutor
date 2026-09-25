@@ -120,8 +120,6 @@ export type ExecutionStep = {
   before?: AliasedRow[] | Group[]
   after: AliasedRow[] | Group[]
   sources?: Array<{ label: string; rows: AliasedRow[] }>
-  /** JOIN only: "u1 ↔ l1, l2" match lines. */
-  details?: string[]
   highlights: Highlight[]
   sortSummaries?: SortSummary[]
 }

@@ -4,11 +4,9 @@ import { TableView } from './TableView'
 export function SourcesView({
   sources,
   highlights,
-  matchList,
 }: {
   sources: NonNullable<ExecutionStep['sources']>
   highlights: Highlight[]
-  matchList?: string[]
 }) {
   return (
     <div className="source-grid">
@@ -18,11 +16,6 @@ export function SourcesView({
           <TableView rows={source.rows} highlights={highlights} />
         </section>
       ))}
-      {matchList?.length ? (
-        <ul className="match-list" aria-label="Join matches">
-          {matchList.map((line) => <li key={line}>{line}</li>)}
-        </ul>
-      ) : null}
     </div>
   )
 }

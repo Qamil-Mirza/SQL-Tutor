@@ -28,12 +28,12 @@ describe('StepPanel', () => {
     expect(screen.getByRole('region', { name: 'Final result' })).toBeInTheDocument()
   })
 
-  it('shows sources, key columns and the match list for JOIN', () => {
+  it('shows sources and key columns for JOIN', () => {
     const [, join] = stepsFor('SELECT u.name FROM users AS u JOIN listening AS l ON u.id = l.user_id')
     render(<StepPanel step={join} isLast={false} />)
     const before = screen.getByRole('region', { name: 'Before' })
     expect(within(before).getByLabelText('users (as u) source rows')).toBeInTheDocument()
-    expect(within(before).getByLabelText('Join matches')).toHaveTextContent('u1 ↔ l1, l2')
+    expect(within(before).queryByLabelText('Join matches')).not.toBeInTheDocument()
     expect(within(before).getAllByRole('columnheader').filter((cell) => cell.classList.contains('selected-column')).map((cell) => cell.textContent)).toEqual(['u.id', 'l.user_id'])
   })
 
