@@ -1,3 +1,4 @@
+import { isQuotedString, maskStrings, matchOutsideStrings, replaceOutsideStrings, splitOutsideStrings, splitTopLevel, unquoteString } from './sqlText'
 import type {
   AggregateName,
   ArithmeticOperator,
@@ -5,12 +6,17 @@ import type {
   Condition,
   Expression,
   QueryAST,
+  QueryClauses,
   SelectItem,
 } from './types'
 
-const clausePattern = /\b(FROM|JOIN|ON|WHERE|GROUP BY|HAVING|LIMIT|ORDER BY|DISTINCT|UNION|WITH)\b/gi
-const unsupportedClausePattern = /\b(DISTINCT|UNION|WITH|OVER|RIGHT JOIN|LEFT JOIN|FULL JOIN|CROSS JOIN)\b/i
-const comparisonPattern = /^(.+?)\s*(>=|<=|<>|!=|=|>|<)\s*(.+)$/i
+const clauseOrder = ['SELECT', 'FROM', 'JOIN', 'ON', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT'] as const
+type ClauseName = (typeof clauseOrder)[number]
+type ClauseSpan = { name: ClauseName; start: number; end: number }
+
+const clausePattern = /\b(SELECT|FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b/gi
+const unsupportedPattern = /\b(DISTINCT|UNION|WITH|OVER|OFFSET|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN|IN|BETWEEN|LIKE|NOT|OR)\b/i
+const comparisonPattern = /(>=|<=|<>|!=|=|>|<)/
 
 export class QueryParseError extends Error {
   constructor(message: string) {
@@ -20,62 +26,116 @@ export class QueryParseError extends Error {
 }
 
 export function parseQuery(input: string): QueryAST {
-  const sql = input.trim().replace(/;$/, '').replace(/\s+/g, ' ')
+  const sql = normalize(input)
   if (!sql) throw new QueryParseError('Enter a SELECT query to visualize.')
   if (!/^SELECT\b/i.test(sql)) throw new QueryParseError('Only SELECT queries are supported.')
-  const unsupported = sql.match(unsupportedClausePattern)
-  if (unsupported) throw new QueryParseError(`${unsupported[1].toUpperCase()} is not supported in this visualizer.`)
+  rejectUnsupported(sql)
 
-  const clauses = collectClauses(sql)
-  const selectText = sql.slice('SELECT '.length, clauses.FROM?.start).trim()
-  if (!selectText || !clauses.FROM) throw new QueryParseError('Queries must include SELECT columns and a FROM table alias.')
+  const spans = collectClauses(sql)
+  const textAfter = (name: ClauseName) => {
+    const span = spans.find((candidate) => candidate.name === name)
+    if (!span) return undefined
+    const next = spans.find((candidate) => candidate.start > span.start)
+    return sql.slice(span.end, next?.start ?? sql.length).trim()
+  }
+  const clauseText = (name: ClauseName) => {
+    const span = spans.find((candidate) => candidate.name === name)
+    if (!span) return undefined
+    const next = spans.find((candidate) => candidate.start > span.start)
+    return sql.slice(span.start, next?.start ?? sql.length).trim()
+  }
 
-  const fromSources = splitComma(textForClause(sql, clauses, 'FROM'))
+  const selectText = textAfter('SELECT')
+  const fromText = textAfter('FROM')
+  if (!selectText || fromText === undefined) throw new QueryParseError('Queries must include SELECT columns and a FROM table.')
+
+  const fromSources = splitTopLevel(fromText)
+  if (fromSources.length === 0) throw new QueryParseError('FROM must name a table.')
   if (fromSources.length > 2) throw new QueryParseError('Only one joined table is supported.')
-  if (fromSources.length > 1 && clauses.JOIN) throw new QueryParseError('Use either comma join syntax or JOIN syntax, not both.')
+  const joinText = textAfter('JOIN')
+  const onText = textAfter('ON')
+  if (fromSources.length > 1 && joinText !== undefined) throw new QueryParseError('Use either comma join syntax or JOIN syntax, not both.')
   const fromSource = parseTableSource(fromSources[0], false)
 
-  const joinText = clauses.JOIN ? textForClause(sql, clauses, 'JOIN') : undefined
-  const onText = clauses.ON ? textForClause(sql, clauses, 'ON') : undefined
   let join: QueryAST['join']
   if (fromSources[1]) {
-    const commaJoinSource = parseTableSource(fromSources[1], false)
-    if (commaJoinSource.alias === fromSource.alias) {
-      throw new QueryParseError('Joined tables must use unique aliases.')
-    }
-    join = { ...commaJoinSource, syntax: 'comma' }
+    const commaSource = parseTableSource(fromSources[1], false)
+    if (commaSource.alias.toLowerCase() === fromSource.alias.toLowerCase()) throw new QueryParseError('Joined tables must use unique aliases.')
+    join = { ...commaSource, conditions: [], syntax: 'comma' }
   }
-  if (joinText || onText) {
-    const joinSource = joinText ? parseTableSource(joinText, true) : undefined
-    if (!joinSource || !onText) throw new QueryParseError('JOIN must use: JOIN table AS alias ON alias.column = alias.column.')
+  if (joinText !== undefined || onText !== undefined) {
+    if (joinText === undefined || onText === undefined) throw new QueryParseError('JOIN must use: JOIN table AS alias ON alias.column = alias.column.')
+    const joinSource = parseTableSource(joinText, true)
+    if (joinSource.alias.toLowerCase() === fromSource.alias.toLowerCase()) throw new QueryParseError('Joined tables must use unique aliases.')
     const conditions = parseConditions(onText)
-    join = {
-      ...joinSource,
-      condition: conditions[0],
-      conditions,
-      syntax: 'explicit',
-    }
+    rejectAggregates(conditions, 'ON')
+    join = { ...joinSource, conditions, syntax: 'explicit' }
   }
 
-  const limitText = clauses.LIMIT ? textForClause(sql, clauses, 'LIMIT') : undefined
-  let parsedLimit: number | undefined
+  const limitText = textAfter('LIMIT')
+  let limit: number | undefined
   if (limitText !== undefined) {
-    parsedLimit = Number(limitText)
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 0) {
-      throw new QueryParseError('LIMIT must be a non-negative whole number.')
-    }
+    limit = Number(limitText)
+    if (!/^\d+$/.test(limitText) || !Number.isInteger(limit)) throw new QueryParseError('LIMIT must be a non-negative whole number.')
+  }
+
+  const where = textAfter('WHERE') !== undefined ? parseConditions(textAfter('WHERE')!) : []
+  rejectAggregates(where, 'WHERE')
+
+  const clauses: QueryClauses = {
+    select: clauseText('SELECT')!,
+    from: clauseText('FROM')!,
+    join: joinText !== undefined ? `${clauseText('JOIN')} ${clauseText('ON')}` : undefined,
+    where: clauseText('WHERE'),
+    groupBy: clauseText('GROUP BY'),
+    having: clauseText('HAVING'),
+    orderBy: clauseText('ORDER BY'),
+    limit: clauseText('LIMIT'),
   }
 
   return {
-    select: splitComma(selectText).map(parseSelectItem),
+    select: splitTopLevel(selectText).map(parseSelectItem),
     from: fromSource,
     join,
-    where: clauses.WHERE ? parseConditions(textForClause(sql, clauses, 'WHERE')) : [],
-    groupBy: clauses['GROUP BY'] ? splitComma(textForClause(sql, clauses, 'GROUP BY')).map(parseExpression) : [],
-    having: clauses.HAVING ? parseConditions(textForClause(sql, clauses, 'HAVING')) : [],
-    orderBy: clauses['ORDER BY'] ? splitComma(textForClause(sql, clauses, 'ORDER BY')).map(parseOrderItem) : [],
-    limit: parsedLimit,
+    where,
+    groupBy: textAfter('GROUP BY') !== undefined ? splitTopLevel(textAfter('GROUP BY')!).map(parseExpression) : [],
+    having: textAfter('HAVING') !== undefined ? parseConditions(textAfter('HAVING')!) : [],
+    orderBy: textAfter('ORDER BY') !== undefined ? splitTopLevel(textAfter('ORDER BY')!).map(parseOrderItem) : [],
+    limit,
+    clauses,
   }
+}
+
+function normalize(input: string) {
+  const trimmed = input.trim().replace(/;\s*$/, '')
+  return replaceOutsideStrings(trimmed, /\s+/g, () => ' ').trim()
+}
+
+function rejectUnsupported(sql: string) {
+  const masked = maskStrings(sql).replace(/\bIS\s+NOT\s+NULL\b/gi, (text) => ' '.repeat(text.length))
+  const match = masked.match(unsupportedPattern)
+  if (!match) return
+  const keyword = match[1].toUpperCase()
+  if (keyword === 'OR') throw new QueryParseError('OR is not supported in this visualizer. Combine comparisons with AND.')
+  throw new QueryParseError(`${keyword} is not supported in this visualizer.`)
+}
+
+function collectClauses(sql: string): ClauseSpan[] {
+  const spans: ClauseSpan[] = [...maskStrings(sql).matchAll(clausePattern)].map((match) => ({
+    name: match[1].toUpperCase().replace(/\s+/g, ' ') as ClauseName,
+    start: match.index,
+    end: match.index + match[0].length,
+  }))
+  const seen = new Set<ClauseName>()
+  spans.forEach((span, index) => {
+    if (seen.has(span.name)) throw new QueryParseError(`${span.name} appears more than once.`)
+    seen.add(span.name)
+    const previous = spans[index - 1]
+    if (previous && clauseOrder.indexOf(span.name) < clauseOrder.indexOf(previous.name)) {
+      throw new QueryParseError(`${span.name} must come before ${previous.name}.`)
+    }
+  })
+  return spans
 }
 
 function parseTableSource(text: string, requireAlias: boolean) {
@@ -85,57 +145,63 @@ function parseTableSource(text: string, requireAlias: boolean) {
   return { tableName: match[1], alias: match[2] ?? match[1] }
 }
 
-function collectClauses(sql: string) {
-  const found: Record<string, { start: number; end: number }> = {}
-  for (const match of sql.matchAll(clausePattern)) {
-    const name = match[1].toUpperCase()
-    found[name] = { start: match.index ?? 0, end: (match.index ?? 0) + match[0].length }
-  }
-  return found
-}
-
-function textForClause(sql: string, clauses: Record<string, { start: number; end: number }>, name: string) {
-  const clause = clauses[name]
-  const next = Object.values(clauses)
-    .filter((candidate) => candidate.start > clause.start)
-    .sort((a, b) => a.start - b.start)[0]
-  return sql.slice(clause.end, next?.start ?? sql.length).trim()
-}
-
 function parseConditions(text: string): Condition[] {
-  // Mask quoted strings so an OR inside a value (e.g. 'rock or pop') is not rejected.
-  const withoutStrings = text.replace(/'[^']*'|"[^"]*"/g, "''")
-  if (/\bOR\b/i.test(withoutStrings)) {
-    throw new QueryParseError('OR is not supported in this visualizer. Combine comparisons with AND.')
-  }
-  return text.split(/\s+AND\s+/i).map(parseCondition)
+  return splitOutsideStrings(text, /\s+AND\s+/i).map(parseCondition)
 }
 
 function parseCondition(text: string): Condition {
-  const match = text.trim().match(comparisonPattern)
-  if (!match) throw new QueryParseError(`Unsupported condition: ${text}. Use a simple comparison joined with AND.`)
+  const trimmed = text.trim()
+  const nullCheck = matchOutsideStrings(trimmed, /\s+IS\s+(NOT\s+)?NULL$/i)
+  if (nullCheck) {
+    return {
+      left: parseExpression(trimmed.slice(0, nullCheck.index)),
+      operator: nullCheck.groups[0] ? 'IS NOT' : 'IS',
+      right: { type: 'literal', value: null, label: 'NULL' },
+      label: trimmed,
+    }
+  }
+  const operator = matchOutsideStrings(trimmed, comparisonPattern)
+  const left = operator ? trimmed.slice(0, operator.index).trim() : ''
+  const right = operator ? trimmed.slice(operator.index + operator.text.length).trim() : ''
+  if (!operator || !left || !right) {
+    throw new QueryParseError(`Unsupported condition: ${trimmed}. Use a comparison such as column = value, joined with AND.`)
+  }
   return {
-    left: parseExpression(match[1]),
-    operator: match[2] as ComparisonOperator,
-    right: parseExpression(match[3]),
-    label: text.trim(),
+    left: parseExpression(left),
+    operator: operator.text as ComparisonOperator,
+    right: parseExpression(right),
+    label: trimmed,
   }
 }
 
+function rejectAggregates(conditions: Condition[], clause: 'WHERE' | 'ON') {
+  for (const condition of conditions) {
+    const aggregate = [condition.left, condition.right].flatMap(collectAggregates)[0]
+    if (aggregate) throw new QueryParseError(`${aggregate.label} can't be used in ${clause} because aggregates need groups. Use HAVING.`)
+  }
+}
+
+export function collectAggregates(expression: Expression): Extract<Expression, { type: 'aggregate' }>[] {
+  if (expression.type === 'aggregate') return [expression]
+  if (expression.type === 'binary') return [...collectAggregates(expression.left), ...collectAggregates(expression.right)]
+  return []
+}
+
 function parseSelectItem(text: string): SelectItem {
-  const match = text.trim().match(/^(.+?)(?:\s+AS\s+([a-z_][\w]*))?$/i)
-  if (!match) throw new QueryParseError(`Unsupported SELECT expression: ${text}.`)
-  const expression = parseExpression(match[1])
-  return { expression, alias: match[2], label: text.trim() }
+  const trimmed = text.trim()
+  const alias = matchOutsideStrings(trimmed, /\s+AS\s+([a-z_][\w]*)$/i)
+  const expressionText = alias ? trimmed.slice(0, alias.index) : trimmed
+  if (!expressionText.trim()) throw new QueryParseError(`Unsupported SELECT expression: ${trimmed}.`)
+  return { expression: parseExpression(expressionText), alias: alias?.groups[0], label: trimmed }
 }
 
 function parseOrderItem(text: string) {
   const trimmed = text.trim()
-  const direction = trimmed.match(/\s+(ASC|DESC)$/i)
-  const expressionText = direction ? trimmed.slice(0, direction.index).trim() : trimmed
+  const direction = matchOutsideStrings(trimmed, /\s+(ASC|DESC)$/i)
+  const expressionText = direction ? trimmed.slice(0, direction.index) : trimmed
   return {
     expression: parseExpression(expressionText),
-    direction: (direction?.[1].toUpperCase() ?? 'ASC') as 'ASC' | 'DESC',
+    direction: (direction?.groups[0].toUpperCase() ?? 'ASC') as 'ASC' | 'DESC',
     label: trimmed,
   }
 }
@@ -143,6 +209,11 @@ function parseOrderItem(text: string) {
 function parseExpression(text: string): Expression {
   const value = text.trim()
   if (value === '*') return { type: 'wildcard', label: '*' }
+  if (isWrappedInParentheses(value)) {
+    const inner = parseExpression(value.slice(1, -1))
+    if (inner.type === 'wildcard') throw new QueryParseError(`Unsupported expression: ${value}.`)
+    return { ...inner, label: value }
+  }
   const binary = splitBinaryExpression(value)
   if (binary) {
     return {
@@ -156,10 +227,11 @@ function parseExpression(text: string): Expression {
   const aggregate = value.match(/^(COUNT|SUM|AVG|MIN|MAX)\((\*|.+)\)$/i)
   if (aggregate) {
     const fn = aggregate[1].toUpperCase() as AggregateName
-    return { type: 'aggregate', fn, column: aggregate[2] === '*' ? undefined : parseExpression(aggregate[2]), label: value }
+    const column = aggregate[2] === '*' ? undefined : parseExpression(aggregate[2])
+    if (column && collectAggregates(column).length) throw new QueryParseError(`Aggregates can't be nested: ${value}.`)
+    return { type: 'aggregate', fn, column, label: value }
   }
-  // Disallow inner quotes so text like 'a' OR x = 'b' cannot collapse into one literal.
-  if (/^'[^']*'$/.test(value) || /^"[^"]*"$/.test(value)) return { type: 'literal', value: value.slice(1, -1), label: value }
+  if (isQuotedString(value)) return { type: 'literal', value: unquoteString(value), label: value }
   if (/^-?\d+(?:\.\d+)?$/.test(value)) return { type: 'literal', value: Number(value), label: value }
   if (/^null$/i.test(value)) return { type: 'literal', value: null, label: value }
   const column = value.match(/^(?:(\w+)\.)?(\w+)$/)
@@ -167,50 +239,37 @@ function parseExpression(text: string): Expression {
   throw new QueryParseError(`Unsupported expression: ${value}.`)
 }
 
+function isWrappedInParentheses(value: string) {
+  if (!value.startsWith('(') || !value.endsWith(')')) return false
+  const masked = maskStrings(value)
+  let depth = 0
+  for (let index = 0; index < masked.length; index += 1) {
+    if (masked[index] === '(') depth += 1
+    if (masked[index] === ')') depth -= 1
+    if (depth === 0 && index < masked.length - 1) return false
+  }
+  return depth === 0
+}
+
 function splitBinaryExpression(value: string): { left: string; operator: ArithmeticOperator; right: string } | undefined {
+  const masked = maskStrings(value)
   for (const operators of [['+', '-'], ['*', '/']] as const) {
     let depth = 0
-    let quote: string | undefined
-    for (let index = value.length - 1; index >= 0; index -= 1) {
-      const char = value[index]
-      if (quote) {
-        if (char === quote) quote = undefined
-        continue
-      }
-      if (char === '"' || char === "'") {
-        quote = char
-        continue
-      }
+    for (let index = masked.length - 1; index >= 0; index -= 1) {
+      const char = masked[index]
       if (char === ')') depth += 1
       if (char === '(') depth -= 1
       if (depth === 0 && (operators as readonly string[]).includes(char)) {
-        if ((char === '+' || char === '-') && isUnarySign(value, index)) continue
+        if ((char === '+' || char === '-') && isUnarySign(masked, index)) continue
         const left = value.slice(0, index).trim()
         const right = value.slice(index + 1).trim()
         if (left && right) return { left, operator: char as ArithmeticOperator, right }
       }
     }
   }
+  return undefined
 }
 
 function isUnarySign(value: string, index: number) {
   return index === 0 || /[+\-*/(]\s*$/.test(value.slice(0, index))
-}
-
-function splitComma(text: string) {
-  const parts: string[] = []
-  let depth = 0
-  let current = ''
-  for (const char of text) {
-    if (char === '(') depth += 1
-    if (char === ')') depth -= 1
-    if (char === ',' && depth === 0) {
-      parts.push(current.trim())
-      current = ''
-    } else {
-      current += char
-    }
-  }
-  if (current.trim()) parts.push(current.trim())
-  return parts
 }

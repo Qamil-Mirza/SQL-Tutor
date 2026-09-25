@@ -50,4 +50,21 @@ describe('table SQL helpers', () => {
   it('rejects unsupported table statements', () => {
     expect(() => parseTableSql('DROP TABLE pets;')).toThrow(/Unsupported table statement/)
   })
+
+  it('unescapes doubled quotes and accepts double-quoted values', () => {
+    const [table] = parseTableSql(`CREATE TABLE t (a, b); INSERT INTO t VALUES ('it''s', "dq");`)
+    expect(table.rows).toEqual([{ a: "it's", b: 'dq' }])
+    expect(serializeTables([table])).toContain("('it''s', 'dq')")
+  })
+
+  it('matches table names case-insensitively across statements', () => {
+    const [table] = parseTableSql('create table Pets (id); insert into pets values (1);')
+    expect(table.name).toBe('Pets')
+    expect(table.rows).toEqual([{ id: 1 }])
+  })
+
+  it('rejects duplicate tables and duplicate columns', () => {
+    expect(() => parseTableSql('CREATE TABLE t (a); CREATE TABLE T (b);')).toThrow('Table "T" is already defined.')
+    expect(() => parseTableSql('CREATE TABLE t (a, A);')).toThrow('Table "t" has duplicate column "A".')
+  })
 })

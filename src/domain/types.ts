@@ -8,18 +8,12 @@ export type Table = {
   rows: Row[]
 }
 
-export type AliasedTable = {
-  table: Table
-  alias: string
-}
-
 export type AliasedRow = {
   id: string
-  provenance: string[]
   values: Record<string, Scalar>
+  /** Ordered result columns; set on projected rows so column order is the order written. */
+  columns?: string[]
 }
-
-export type JoinedRow = AliasedRow
 
 export type AggregateName = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'
 export type ArithmeticOperator = '+' | '-' | '*' | '/'
@@ -31,7 +25,7 @@ export type Expression =
   | { type: 'binary'; operator: ArithmeticOperator; left: Expression; right: Expression; label: string }
   | { type: 'wildcard'; label: '*' }
 
-export type ComparisonOperator = '=' | '!=' | '<>' | '>' | '<' | '>=' | '<='
+export type ComparisonOperator = '=' | '!=' | '<>' | '>' | '<' | '>=' | '<=' | 'IS' | 'IS NOT'
 
 export type Condition = {
   left: Expression
@@ -55,9 +49,20 @@ export type OrderItem = {
 export type JoinClause = {
   tableName: string
   alias: string
-  condition?: Condition
-  conditions?: Condition[]
-  syntax?: 'explicit' | 'comma'
+  conditions: Condition[]
+  syntax: 'explicit' | 'comma'
+}
+
+/** Raw clause text as the student wrote it (whitespace-normalised), keyword included. */
+export type QueryClauses = {
+  select: string
+  from: string
+  join?: string
+  where?: string
+  groupBy?: string
+  having?: string
+  orderBy?: string
+  limit?: string
 }
 
 export type QueryAST = {
@@ -69,15 +74,14 @@ export type QueryAST = {
   having: Condition[]
   orderBy: OrderItem[]
   limit?: number
+  clauses: QueryClauses
 }
 
 export type Group = {
   id: string
   key: string
   rows: AliasedRow[]
-  values: Record<string, Scalar>
-  aggregates?: Array<{ label: string; value: Scalar }>
-  conditions?: Array<{ label: string; result: boolean }>
+  conditions?: Array<{ label: string; result: boolean; value: Scalar; leftLabel: string }>
 }
 
 export type SortSummary = {
@@ -91,7 +95,7 @@ export type Highlight = {
   rowIds?: string[]
   columnKeys?: string[]
   groupIds?: string[]
-  kind: 'kept' | 'removed' | 'selected' | 'grouped' | 'matched'
+  kind: 'removed' | 'selected' | 'matched' | 'unmatched'
 }
 
 export type StepKind =
@@ -101,23 +105,22 @@ export type StepKind =
   | 'groupBy'
   | 'having'
   | 'select'
+  | 'selectGroup'
   | 'orderBy'
   | 'limit'
-  | 'result'
 
 export type ExecutionStep = {
   id: string
   kind: StepKind
   title: string
-  explanation: string
+  /** One concrete sentence about what this step did, e.g. "Kept 2 of 4 rows where u.tier = 'pro'." */
+  summary: string
+  /** Text to highlight inside the pinned query. Undefined for the implicit group step. */
   clause?: string
   before?: AliasedRow[] | Group[]
   after: AliasedRow[] | Group[]
   sources?: Array<{ label: string; rows: AliasedRow[] }>
-  display?: {
-    beforeLabel?: string
-    afterLabel?: string
-  }
+  /** JOIN only: "u1 ↔ l1, l2" match lines. */
   details?: string[]
   highlights: Highlight[]
   sortSummaries?: SortSummary[]

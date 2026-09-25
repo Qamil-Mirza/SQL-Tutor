@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+// src/App.tsx
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { executeQuery } from './domain/engine'
 import { parseQuery } from './domain/parser'
@@ -6,347 +7,183 @@ import { initialTables, starterQuery } from './domain/samples'
 import { createShareUrl, readShareSnapshot } from './domain/shareSnapshot'
 import { formatSql } from './domain/sqlFormatter'
 import { parseTableSql, serializeTables } from './domain/tableSql'
-import type { AliasedRow, ExecutionStep, Group, Highlight, Scalar, Table } from './domain/types'
+import type { ExecutionStep, Table } from './domain/types'
+import { QueryEditor } from './ui/QueryEditor'
+import { ShareModal } from './ui/ShareModal'
+import { TablesPanel } from './ui/TablesPanel'
+import { PinnedQuery } from './ui/trace/PinnedQuery'
+import { StepPanel } from './ui/trace/StepPanel'
+import { Timeline } from './ui/trace/Timeline'
 
 const workspaceStorageKey = 'c88c-sql-tutor-workspace'
-const previewPageSize = 5
 
-type WorkspaceSnapshot = {
-  tables: Table[]
-  tableSql: string
-  sql: string
-}
+type Workspace = { tables: Table[]; tableSql: string; sql: string }
 
-type AppRoute = '/tables' | '/query' | '/visualization'
-
-type InitialAppState = WorkspaceSnapshot & {
-  path: AppRoute
-  tableError?: string
-  queryError?: string
-  stepIndex?: number
-  isSharedSession: boolean
-}
-
-type ShareModalState = {
-  isOpen: boolean
-  isLoading: boolean
-  shareUrl: string
-  copied: boolean
-}
+type InitialState = Workspace & { tableError?: string; isSharedSession: boolean }
 
 function App() {
-  const initialState = useMemo(() => initializeAppState(loadWorkspace(), window.location.pathname), [])
-  const initialResult = useMemo(() => run(initialState.sql, initialState.tables), [initialState.sql, initialState.tables])
-  const [path, setPath] = useState<AppRoute>(initialState.path)
-  const [tables, setTables] = useState<Table[]>(initialState.tables)
-  const [tableSql, setTableSql] = useState(initialState.tableSql)
-  const [sql, setSql] = useState(initialState.sql)
-  const [stepIndex, setStepIndex] = useState(() => (
-    Math.min(initialState.stepIndex ?? 0, Math.max(0, initialResult.steps.length - 1))
-  ))
-  const [error, setError] = useState<string | undefined>(initialState.queryError ?? initialResult.error)
-  const [tableError, setTableError] = useState<string | undefined>(initialState.tableError)
-  const [steps, setSteps] = useState<ExecutionStep[]>(initialResult.steps)
-  const [isSharedSession] = useState(initialState.isSharedSession)
-  const [shareModal, setShareModal] = useState<ShareModalState>({
-    isOpen: false,
-    isLoading: false,
-    shareUrl: '',
-    copied: false,
-  })
-  const activeStep = steps[stepIndex]
+  const initial = useMemo(() => initializeState(), [])
+  // Format before the first run so the pinned query and the saved workspace match what Run would produce.
+  const initialSql = useMemo(() => formatSql(initial.sql), [initial.sql])
+  const initialRun = useMemo(() => run(initialSql, initial.tables), [initialSql, initial.tables])
+  const [tables, setTables] = useState(initial.tables)
+  const [tableSql, setTableSql] = useState(initial.tableSql)
+  const [tableError, setTableError] = useState(initial.tableError)
+  const [sql, setSql] = useState(initialSql)
+  const [tracedSql, setTracedSql] = useState(initialSql)
+  const [error, setError] = useState(initialRun.error)
+  const [steps, setSteps] = useState<ExecutionStep[]>(initialRun.steps)
+  const [stepIndex, setStepIndex] = useState(0)
+  const [tablesOpen, setTablesOpen] = useState(Boolean(initial.tableError) || initial.tables.length === 0)
+  const [shareModal, setShareModal] = useState({ isOpen: false, shareUrl: '', copied: false })
+  const [isSharedSession] = useState(initial.isSharedSession)
+  const traceRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (isSharedSession) return
-    window.localStorage.setItem(workspaceStorageKey, JSON.stringify({ tables, tableSql, sql }))
+    try {
+      window.localStorage.setItem(workspaceStorageKey, JSON.stringify({ tables, tableSql, sql }))
+    } catch {
+      // Storage unavailable (private mode, quota); the session still works without saving.
+    }
   }, [tables, tableSql, sql, isSharedSession])
 
   useEffect(() => {
-    function handlePopState() {
-      enterRoute(normalizeRoute(window.location.pathname), 'replace')
+    function handleKeyDown(event: KeyboardEvent) {
+      if (steps.length === 0 || shareModal.isOpen) return
+      if (event.altKey || event.metaKey || event.ctrlKey) return
+      const target = event.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      if (event.key === 'ArrowRight') setStepIndex((value) => Math.min(steps.length - 1, value + 1))
+      if (event.key === 'ArrowLeft') setStepIndex((value) => Math.max(0, value - 1))
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  })
-
-  useEffect(() => {
-    if (!shareModal.isOpen || !shareModal.isLoading) return undefined
-    const timer = window.setTimeout(() => {
-      setShareModal((current) => (
-        current.isOpen ? { ...current, isLoading: false } : current
-      ))
-    }, 1000)
-    return () => window.clearTimeout(timer)
-  }, [shareModal.isOpen, shareModal.isLoading])
-
-  function navigate(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
-    window.history[historyMode === 'push' ? 'pushState' : 'replaceState']({}, '', nextPath)
-    setPath(nextPath)
-  }
-
-  function enterRoute(nextPath: AppRoute, historyMode: 'push' | 'replace' = 'push') {
-    if (isGuardedRoute(nextPath) && path === '/tables') {
-      const nextTables = applyTableSql()
-      if (!nextTables) {
-        navigate('/tables', 'replace')
-        return
-      }
-    }
-    navigate(nextPath, historyMode)
-  }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [steps.length, shareModal.isOpen])
 
   function handleRun(nextSql = sql, nextTables = tables) {
-    const formattedSql = formatSql(nextSql)
-    const result = run(formattedSql, nextTables)
-    setSql(formattedSql)
+    const formatted = formatSql(nextSql)
+    const result = run(formatted, nextTables)
+    setSql(formatted)
     setError(result.error)
-    setSteps(result.steps)
-    setStepIndex(0)
-    if (!result.error) navigate('/visualization')
+    if (!result.error) {
+      setSteps(result.steps)
+      setTracedSql(formatted)
+      setStepIndex(0)
+      traceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  function handleApplyTables() {
+    const formattedTableSql = formatSql(tableSql)
+    setTableSql(formattedTableSql)
+    try {
+      const nextTables = parseTableSql(formattedTableSql)
+      setTables(nextTables)
+      setTableError(undefined)
+      const formatted = formatSql(sql)
+      const result = run(formatted, nextTables)
+      setError(result.error)
+      if (result.error) {
+        setTablesOpen(true)
+      } else {
+        setSql(formatted)
+        setTracedSql(formatted)
+        setSteps(result.steps)
+        setStepIndex(0)
+        setTablesOpen(false)
+      }
+    } catch (caught) {
+      setTableError(caught instanceof Error ? caught.message : 'The table SQL could not be applied.')
+      setTablesOpen(true)
+    }
   }
 
   function handleShare() {
-    const url = createShareUrl({
-      origin: window.location.origin,
-      snapshot: { version: 1, tableSql, sql },
-    })
-    setShareModal({ isOpen: true, isLoading: true, shareUrl: url, copied: false })
-    void window.navigator.clipboard?.writeText(url)
+    const shareUrl = createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql, sql } })
+    void window.navigator.clipboard?.writeText(shareUrl)
+    setShareModal({ isOpen: true, shareUrl, copied: false })
   }
 
-  function closeShareModal() {
-    setShareModal((current) => ({ ...current, isOpen: false, copied: false }))
-  }
-
-  function copyShareLink() {
-    if (!shareModal.shareUrl) return
+  function handleCopy() {
     void window.navigator.clipboard?.writeText(shareModal.shareUrl)
     setShareModal((current) => ({ ...current, copied: true }))
   }
 
-  function applyTableSql() {
-    const formattedTableSql = formatSql(tableSql)
-    try {
-      const nextTables = parseTableSql(formattedTableSql)
-      setTableSql(formattedTableSql)
-      setTables(nextTables)
-      setTableError(undefined)
-      return nextTables
-    } catch (error) {
-      setTableSql(formattedTableSql)
-      setTableError(error instanceof Error ? error.message : 'The table SQL could not be applied.')
-      return undefined
-    }
-  }
+  const activeStep = steps[stepIndex]
 
-  function handleFormatTableSql() {
-    setTableSql(formatSql(tableSql))
-  }
-
-  function handleFormatQuerySql() {
-    setSql(formatSql(sql))
-  }
-
-  function handleApplyTableSql() {
-    applyTableSql()
-  }
-
-  function handleContinueToQuery() {
-    enterRoute('/query')
-  }
-
-  function handleShellNavigate(nextPath: AppRoute) {
-    enterRoute(nextPath)
-  }
-
-  if (path === '/visualization') {
-    return (
-      <AppShell path={path} onNavigate={handleShellNavigate}>
-        <section className="trace-pane visualization-route" aria-labelledby="trace-heading">
-          <section className="trace-title-section" aria-label="Trace title and back action">
-            <h1 id="trace-heading">Trace</h1>
-            <button className="secondary-button back-button" type="button" onClick={() => navigate('/query')}>
-              Back to query
-            </button>
-          </section>
-          <section className="trace-card trace-stepper-card" aria-label="Trace stepper">
-            <StepNavigator
-              steps={steps}
-              stepIndex={stepIndex}
-              onPrevious={() => setStepIndex((value) => Math.max(0, value - 1))}
-              onNext={() => setStepIndex((value) => Math.min(steps.length - 1, value + 1))}
-              onReset={() => setStepIndex(0)}
-            />
-          </section>
-          <section className="trace-card visualization-panel" aria-label="Execution visualization">
-            {activeStep ? <VisualizationPanel key={activeStep.id} step={activeStep} /> : <EmptyState />}
-          </section>
-        </section>
-      </AppShell>
-    )
-  }
-
-  if (path === '/query') {
-    return (
-      <AppShell path={path} onNavigate={handleShellNavigate}>
-        <section className="workflow-page query-route" aria-label="Query page">
-          <div className="pane-heading compact-heading">
-            <h1>Query</h1>
-            <button className="secondary-button back-button" type="button" onClick={() => navigate('/tables')}>
-              Back to tables
-            </button>
-          </div>
-          <div className="query-page-grid">
-            <QueryEditor
-              sql={sql}
-              error={error}
-              onSqlChange={setSql}
-              onFormat={handleFormatQuerySql}
-              onRun={() => handleRun()}
-              onShare={handleShare}
-            />
-            <TableContext tables={tables} />
-          </div>
-          <ShareLinkModal
-            isOpen={shareModal.isOpen}
-            isLoading={shareModal.isLoading}
-            shareUrl={shareModal.shareUrl}
-            copied={shareModal.copied}
-            onClose={closeShareModal}
-            onCopy={copyShareLink}
-          />
-        </section>
-      </AppShell>
-    )
-  }
-
-  return (
-    <AppShell path={path} onNavigate={handleShellNavigate}>
-      <section className="workflow-page tables-route" aria-label="Table creation page">
-        <div className="pane-heading compact-heading">
-          <h1>Tables</h1>
-        </div>
-        <TableBuilder
-          tables={tables}
-          tableSql={tableSql}
-          tableError={tableError}
-          onTableSqlChange={setTableSql}
-          onFormatTableSql={handleFormatTableSql}
-          onApplyTableSql={handleApplyTableSql}
-          onContinue={handleContinueToQuery}
-        />
-      </section>
-    </AppShell>
-  )
-}
-
-function initializeAppState(workspace: WorkspaceSnapshot, pathname: string): InitialAppState {
-  try {
-    const sharedSnapshot = readShareSnapshot(window.location.search)
-    if (sharedSnapshot) {
-      const tables = parseTableSql(sharedSnapshot.tableSql)
-      const result = run(sharedSnapshot.sql, tables)
-      if (result.error) {
-        window.history.replaceState({}, '', '/query')
-        return {
-          tables,
-          tableSql: sharedSnapshot.tableSql,
-          sql: sharedSnapshot.sql,
-          path: '/query',
-          queryError: result.error,
-          isSharedSession: true,
-        }
-      }
-      window.history.replaceState({}, '', `/query${window.location.search}`)
-      return {
-        tables,
-        tableSql: sharedSnapshot.tableSql,
-        sql: sharedSnapshot.sql,
-        path: '/query',
-        isSharedSession: true,
-      }
-    }
-  } catch (error) {
-    window.history.replaceState({}, '', '/tables')
-    return {
-      ...workspace,
-      path: '/tables',
-      tableError: error instanceof Error ? error.message : 'The shared link is invalid.',
-      isSharedSession: false,
-    }
-  }
-
-  const path = normalizeRoute(pathname)
-  if (!isGuardedRoute(path)) return { ...workspace, path, isSharedSession: false }
-
-  try {
-    const tables = parseTableSql(workspace.tableSql)
-    return { ...workspace, tables, path, isSharedSession: false }
-  } catch (error) {
-    window.history.replaceState({}, '', '/tables')
-    return {
-      ...workspace,
-      path: '/tables',
-      tableError: error instanceof Error ? error.message : 'The table SQL could not be applied.',
-      isSharedSession: false,
-    }
-  }
-}
-
-function normalizeRoute(pathname: string): AppRoute {
-  if (pathname === '/query' || pathname === '/visualization' || pathname === '/tables') return pathname
-  window.history.replaceState({}, '', '/tables')
-  return '/tables'
-}
-
-function isGuardedRoute(path: AppRoute) {
-  return path === '/query' || path === '/visualization'
-}
-
-function AppShell({
-  children,
-  path,
-  onNavigate,
-}: {
-  children: ReactNode
-  path: AppRoute
-  onNavigate: (path: AppRoute) => void
-}) {
   return (
     <main className="app-shell">
       <header className="app-topbar">
-        <button className="brand-lockup" type="button" onClick={() => onNavigate('/tables')} aria-label="CSM C88C SQL Visualizer home">
+        <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">SQL</span>
           <span className="brand-copy">
             <span className="brand-title">CSM C88C SQL Visualizer</span>
-            <span className="brand-subtitle">Logical execution tutor</span>
+            <span className="brand-subtitle">See how SQL builds a result, one clause at a time.</span>
           </span>
-        </button>
-        <nav className="route-tabs" aria-label="Workflow">
-          <button type="button" className={path === '/tables' ? 'active' : ''} onClick={() => onNavigate('/tables')} aria-current={path === '/tables' ? 'page' : undefined}>
-            Tables
-          </button>
-          <button type="button" className={path === '/query' ? 'active' : ''} onClick={() => onNavigate('/query')} aria-current={path === '/query' ? 'page' : undefined}>
-            Query
-          </button>
-          <button type="button" className={path === '/visualization' ? 'active' : ''} onClick={() => onNavigate('/visualization')} aria-current={path === '/visualization' ? 'page' : undefined}>
-            Trace
-          </button>
-        </nav>
+        </div>
       </header>
-      {children}
+
+      <QueryEditor sql={sql} error={error} onSqlChange={setSql} onFormat={() => setSql(formatSql(sql))} onRun={() => handleRun()} onShare={handleShare} />
+
+      <TablesPanel
+        tables={tables}
+        tableSql={tableSql}
+        tableError={tableError}
+        open={tablesOpen}
+        onToggle={setTablesOpen}
+        onTableSqlChange={setTableSql}
+        onFormat={() => setTableSql(formatSql(tableSql))}
+        onApply={handleApplyTables}
+      />
+
+      <section className="trace" ref={traceRef} aria-labelledby="trace-heading">
+        <h1 id="trace-heading" className="visually-hidden">Trace</h1>
+        {steps.length ? (
+          <>
+            <PinnedQuery sql={tracedSql} clause={activeStep?.clause} />
+            <Timeline steps={steps} stepIndex={stepIndex} onChange={(index) => setStepIndex(Math.max(0, Math.min(steps.length - 1, index)))} />
+            {activeStep ? <StepPanel key={activeStep.id} step={activeStep} isLast={stepIndex === steps.length - 1} /> : null}
+          </>
+        ) : (
+          <p className="empty">Run a supported query to see the execution steps.</p>
+        )}
+      </section>
+
+      <ShareModal
+        isOpen={shareModal.isOpen}
+        shareUrl={shareModal.shareUrl}
+        copied={shareModal.copied}
+        onClose={() => setShareModal((current) => ({ ...current, isOpen: false, copied: false }))}
+        onCopy={handleCopy}
+      />
     </main>
   )
 }
 
-function loadWorkspace(): WorkspaceSnapshot {
+function initializeState(): InitialState {
+  try {
+    const shared = readShareSnapshot(window.location.search)
+    if (shared) {
+      return { tables: parseTableSql(shared.tableSql), tableSql: shared.tableSql, sql: shared.sql, isSharedSession: true }
+    }
+  } catch (caught) {
+    return { ...loadWorkspace(), tableError: caught instanceof Error ? caught.message : 'The shared link is invalid.', isSharedSession: false }
+  }
+  const workspace = loadWorkspace()
+  try {
+    return { ...workspace, tables: parseTableSql(workspace.tableSql), isSharedSession: false }
+  } catch (caught) {
+    return { ...workspace, tableError: caught instanceof Error ? caught.message : 'The table SQL could not be applied.', isSharedSession: false }
+  }
+}
+
+function loadWorkspace(): Workspace {
   try {
     const raw = window.localStorage.getItem(workspaceStorageKey)
     if (!raw) throw new Error('No saved workspace')
-    const parsed = JSON.parse(raw) as Partial<WorkspaceSnapshot>
-    if (!Array.isArray(parsed.tables) || typeof parsed.tableSql !== 'string' || typeof parsed.sql !== 'string') {
-      throw new Error('Invalid saved workspace')
-    }
+    const parsed = JSON.parse(raw) as Partial<Workspace>
+    if (!Array.isArray(parsed.tables) || typeof parsed.tableSql !== 'string' || typeof parsed.sql !== 'string') throw new Error('Invalid saved workspace')
     return { tables: parsed.tables, tableSql: parsed.tableSql, sql: parsed.sql }
   } catch {
     return { tables: initialTables, tableSql: serializeTables(initialTables), sql: starterQuery }
@@ -355,456 +192,10 @@ function loadWorkspace(): WorkspaceSnapshot {
 
 function run(sql: string, tables: Table[]) {
   try {
-    const ast = parseQuery(sql)
-    return { steps: executeQuery(ast, tables), error: undefined }
-  } catch (error) {
-    return {
-      steps: [],
-      error: error instanceof Error ? error.message : 'The query could not be visualized.',
-    }
+    return { steps: executeQuery(parseQuery(sql), tables), error: undefined as string | undefined }
+  } catch (caught) {
+    return { steps: [] as ExecutionStep[], error: caught instanceof Error ? caught.message : 'The query could not be visualized.' }
   }
-}
-
-function StepNavigator({
-  steps,
-  stepIndex,
-  onPrevious,
-  onNext,
-  onReset,
-}: {
-  steps: ExecutionStep[]
-  stepIndex: number
-  onPrevious: () => void
-  onNext: () => void
-  onReset: () => void
-}) {
-  return (
-    <>
-      <div className="step-controls centered-step-controls" aria-label="Step controls">
-        <button className="icon-button" type="button" onClick={onPrevious} disabled={stepIndex === 0 || steps.length === 0} aria-label="Previous step">
-          <span aria-hidden="true">←</span>
-        </button>
-        <button className="reset-button" type="button" onClick={onReset} disabled={stepIndex === 0 || steps.length === 0}>
-          Reset
-        </button>
-        <button className="icon-button" type="button" onClick={onNext} disabled={stepIndex >= steps.length - 1} aria-label="Next step">
-          <span aria-hidden="true">→</span>
-        </button>
-      </div>
-      <div className="step-rail" aria-label="Trace step rail">
-        <ol className="step-list">
-          {steps.map((step, index) => (
-            <li key={step.id} className={index === stepIndex ? 'active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
-              <span>{index + 1}</span>
-              {step.title}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </>
-  )
-}
-
-function QueryEditor({
-  sql,
-  error,
-  onSqlChange,
-  onFormat,
-  onRun,
-  onShare,
-}: {
-  sql: string
-  error?: string
-  onSqlChange: (value: string) => void
-  onFormat: () => void
-  onRun: () => void
-  onShare: () => void
-}) {
-  const editorRows = rowsForQuery(sql)
-  return (
-    <section className="query-card" aria-label="SQL query">
-      <p className="eyebrow">SQL query</p>
-      <h2>Run a query</h2>
-      <label className="field-label" htmlFor="sql-editor">
-        SQL query editor
-      </label>
-      <div className="sql-editor-shell">
-        <pre className="sql-highlight" aria-hidden="true">{highlightSql(sql)}</pre>
-        <textarea
-          id="sql-editor"
-          rows={editorRows}
-          value={sql}
-          onChange={(event) => onSqlChange(event.target.value)}
-          spellCheck={false}
-        />
-      </div>
-      <div className="editor-actions">
-        <button className="primary-button" type="button" onClick={onRun}>
-          Run Query
-        </button>
-        <button className="secondary-button" type="button" onClick={onFormat} aria-label="Format query SQL">
-          Format
-        </button>
-        <button className="secondary-button" type="button" onClick={onShare}>
-          Share
-        </button>
-      </div>
-      {error ? <div className="error-box" role="alert">{error}</div> : null}
-    </section>
-  )
-}
-
-function ShareLinkModal({
-  isOpen,
-  isLoading,
-  shareUrl,
-  copied,
-  onClose,
-  onCopy,
-}: {
-  isOpen: boolean
-  isLoading: boolean
-  shareUrl: string
-  copied: boolean
-  onClose: () => void
-  onCopy: () => void
-}) {
-  useEffect(() => {
-    if (!isOpen) return undefined
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <section className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
-        <button className="modal-close-button" type="button" aria-label="Close share dialog" onClick={onClose}>
-          x
-        </button>
-        <h2 id="share-modal-title">Share link</h2>
-        {isLoading ? (
-          <div className="share-loading" role="status" aria-live="polite">
-            <span className="share-spinner" aria-hidden="true" />
-            <p>Preparing share link</p>
-          </div>
-        ) : (
-          <div className="share-ready">
-            <label className="field-label" htmlFor="share-link">
-              Share link
-            </label>
-            <input id="share-link" readOnly value={shareUrl} />
-            <button className="secondary-button" type="button" onClick={onCopy}>
-              Copy link
-            </button>
-            {copied ? <p className="copy-status" role="status">Copied</p> : null}
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function rowsForQuery(sql: string) {
-  const visualRows = sql.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 72)), 0)
-  return Math.min(18, Math.max(6, visualRows + 1))
-}
-
-function VisualizationPanel({ step }: { step: ExecutionStep }) {
-  const hasBefore = Boolean(step.before)
-  const [view, setView] = useState<'before' | 'after'>(hasBefore ? 'before' : 'after')
-
-  const beforeLabel = step.display?.beforeLabel ?? 'Before'
-  const afterLabel = step.display?.afterLabel ?? 'After'
-  const activeLabel = view === 'before' ? beforeLabel : afterLabel
-  const activeData = view === 'before' ? step.before : step.after
-  const showSources = Boolean(step.sources?.length && (view === 'before' || step.kind === 'from'))
-
-  return (
-    <article>
-      <p className="eyebrow">Current step</p>
-      <h2>{step.title}</h2>
-      <p className="trace-comment">{step.explanation}</p>
-      {step.clause ? (
-        <div className="active-clause" aria-label="Active SQL clause">
-          <span>Clause</span>
-          <code>{step.clause}</code>
-        </div>
-      ) : null}
-      <section className="trace-table-section" aria-label="Trace table state">
-        {hasBefore ? (
-          <div className="trace-state-toggle centered-toggle" aria-label="Trace table state selector">
-            <button type="button" aria-pressed={view === 'before'} onClick={() => setView('before')}>{beforeLabel}</button>
-            <button type="button" aria-pressed={view === 'after'} onClick={() => setView('after')}>{afterLabel}</button>
-          </div>
-        ) : null}
-        <h3>{activeLabel}</h3>
-        {showSources ? <SourceDataView sources={step.sources!} highlights={step.highlights} /> : <DataView data={activeData ?? step.after} highlights={step.highlights} />}
-      </section>
-    </article>
-  )
-}
-
-function SourceDataView({ sources, highlights }: { sources: NonNullable<ExecutionStep['sources']>; highlights: Highlight[] }) {
-  return (
-    <div className="source-grid">
-      {sources.map((source) => (
-        <section className="source-panel" key={source.label} aria-label={`${source.label} source rows`}>
-          <h4>{source.label}</h4>
-          <TableView rows={source.rows} highlights={highlights} />
-        </section>
-      ))}
-    </div>
-  )
-}
-
-function DataView({ data, highlights = [] }: { data: AliasedRow[] | Group[]; highlights?: Highlight[] }) {
-  if (!data.length) return <p className="empty">No rows remain.</p>
-  if ('rows' in data[0]) return <GroupedTableView groups={data as Group[]} highlights={highlights} />
-  return <TableView rows={data as AliasedRow[]} highlights={highlights} />
-}
-
-function TableView({ rows, highlights = [] }: { rows: AliasedRow[]; highlights?: Highlight[] }) {
-  const [page, setPage] = useState(0)
-  const columns = useMemo(() => [...new Set(rows.flatMap((row) => Object.keys(row.values)))], [rows])
-  const removedRows = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.rowIds ?? [])), [highlights])
-  const selectedColumns = useMemo(() => new Set(highlights.filter((highlight) => highlight.kind === 'selected').flatMap((highlight) => highlight.columnKeys ?? [])), [highlights])
-  const pageCount = Math.max(1, Math.ceil(rows.length / previewPageSize))
-  const currentPage = Math.min(page, pageCount - 1)
-  const pageStart = currentPage * previewPageSize
-  const visibleRows = rows.slice(pageStart, pageStart + previewPageSize)
-  const rangeStart = rows.length ? pageStart + 1 : 0
-  const rangeEnd = Math.min(rows.length, pageStart + visibleRows.length)
-  const shouldPaginate = rows.length > previewPageSize
-
-  return (
-    <div className="trace-table">
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>row</th>
-              {columns.map((column) => (
-                <th key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{column}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => (
-              <tr key={row.id} className={isRemovedRow(row.id, removedRows) ? 'removed-row' : ''}>
-                <td><span className="alias-badge">{row.id}</span></td>
-                {columns.map((column) => (
-                  <td key={column} className={isSelectedColumn(column, selectedColumns) ? 'selected-column' : ''}>{formatCell(row.values[column])}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {shouldPaginate ? (
-        <div className="pagination-controls trace-pagination-controls">
-          <span>Rows {rangeStart}-{rangeEnd} of {rows.length}</span>
-          <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0} aria-label="Previous trace table page">
-            Previous
-          </button>
-          <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next trace table page">
-            Next
-          </button>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function GroupedTableView({ groups, highlights = [] }: { groups: Group[]; highlights?: Highlight[] }) {
-  const removedGroups = new Set(highlights.filter((highlight) => highlight.kind === 'removed').flatMap((highlight) => highlight.groupIds ?? []))
-  return (
-    <div className="group-grid">
-      {groups.map((group) => (
-        <div className={removedGroups.has(group.id) ? 'group-bucket removed-group' : 'group-bucket'} key={group.id} aria-label={`Group ${group.key}`}>
-          <div className="group-title">{group.key}</div>
-          {group.aggregates?.length ? (
-            <div className="aggregate-chip-list" aria-label={`Aggregate values for ${group.key}`}>
-              {group.aggregates.map((aggregate) => (
-                <span className="aggregate-chip" key={aggregate.label}>{aggregate.label} = {formatCell(aggregate.value)}</span>
-              ))}
-            </div>
-          ) : null}
-          {group.conditions?.length ? (
-            <div className="condition-chip-list" aria-label={`HAVING checks for ${group.key}`}>
-              {group.conditions.map((condition) => (
-                <span className={condition.result ? 'condition-chip kept-condition' : 'condition-chip removed-condition'} key={condition.label}>
-                  {condition.label} -&gt; {String(condition.result)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <TableView rows={group.rows} highlights={highlights} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function TableBuilder({
-  tables,
-  tableSql,
-  tableError,
-  onTableSqlChange,
-  onFormatTableSql,
-  onApplyTableSql,
-  onContinue,
-}: {
-  tables: Table[]
-  tableSql: string
-  tableError?: string
-  onTableSqlChange: (value: string) => void
-  onFormatTableSql: () => void
-  onApplyTableSql: () => void
-  onContinue: () => void
-}) {
-  return (
-    <section className="table-builder" aria-label="Create table">
-      <div className="section-heading-row">
-        <div>
-          <h2>Create table</h2>
-        </div>
-      </div>
-      <div className="table-mode-panel">
-        <label className="field-label" htmlFor="table-sql">
-          Table SQL
-        </label>
-        <textarea
-          className="table-sql-editor"
-          id="table-sql"
-          value={tableSql}
-          onChange={(event) => onTableSqlChange(event.target.value)}
-          spellCheck={false}
-        />
-        <div className="editor-actions">
-          <button className="secondary-button" type="button" onClick={onApplyTableSql}>
-            Create Tables
-          </button>
-          <button className="secondary-button" type="button" onClick={onFormatTableSql} aria-label="Format table SQL">
-            Format
-          </button>
-        </div>
-        <button className="primary-button" type="button" onClick={onContinue}>
-          Continue to Query
-        </button>
-        {tableError ? <div className="error-box" role="alert">{tableError}</div> : null}
-      </div>
-      <div className="table-preview-list" aria-label="Created table previews">
-        {tables.map((table) => <TablePreview table={table} key={table.name} />)}
-      </div>
-    </section>
-  )
-}
-
-function TableContext({ tables }: { tables: Table[] }) {
-  return (
-    <aside className="table-context" aria-label="Query page table context">
-      <h2>Tables</h2>
-      <div className="table-preview-list compact-preview-list">
-        {tables.map((table) => <TablePreview table={table} key={table.name} />)}
-      </div>
-    </aside>
-  )
-}
-
-function TablePreview({ table }: { table: Table }) {
-  const [page, setPage] = useState(0)
-  const pageCount = Math.max(1, Math.ceil(table.rows.length / previewPageSize))
-  const currentPage = Math.min(page, pageCount - 1)
-  const pageStart = currentPage * previewPageSize
-  const visibleRows = table.rows.slice(pageStart, pageStart + previewPageSize)
-  const rangeStart = table.rows.length ? pageStart + 1 : 0
-  const rangeEnd = Math.min(table.rows.length, pageStart + visibleRows.length)
-
-  return (
-    <section className="table-preview table-overflow-boundary" aria-label={`${table.name} preview`}>
-      <div className="preview-header">
-        <div>
-          <p className="eyebrow">Preview</p>
-          <h3>{table.name}</h3>
-        </div>
-        <p className="preview-count">Rows {rangeStart}-{rangeEnd} of {table.rows.length}</p>
-      </div>
-      <RawTableView columns={table.columns} rows={visibleRows} />
-      <div className="pagination-controls">
-        <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0} aria-label={`Previous page for ${table.name}`}>
-          Previous
-        </button>
-        <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={currentPage >= pageCount - 1} aria-label={`Next page for ${table.name}`}>
-          Next
-        </button>
-      </div>
-    </section>
-  )
-}
-
-function RawTableView({ columns, rows }: { columns: string[]; rows: Record<string, Scalar>[] }) {
-  return (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => <th key={column}>{column}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={index}>
-              {columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function isRemovedRow(rowId: string, removedRows: Set<string>) {
-  return removedRows.has(rowId)
-}
-
-function isSelectedColumn(column: string, selectedColumns: Set<string>) {
-  const unqualified = column.split('.').at(-1) ?? column
-  return selectedColumns.has(column) || selectedColumns.has(unqualified)
-}
-
-function formatCell(value: Scalar | undefined) {
-  return value === null || value === undefined ? '' : String(value)
-}
-
-function highlightSql(sql: string) {
-  const parts = sql.split(/(\bGROUP\s+BY\b|\bORDER\s+BY\b|\bSELECT\b|\bFROM\b|\bWHERE\b|\bJOIN\b|\bHAVING\b|\bLIMIT\b|\bAS\b|\bON\b|\bAND\b)/gi)
-  return parts.map((part, index) => {
-    const normalized = part.toUpperCase().replace(/\s+/g, ' ')
-    const className = keywordClassName(normalized)
-    return className ? <span className={className} key={index}>{part}</span> : <span key={index}>{part}</span>
-  })
-}
-
-function keywordClassName(keyword: string) {
-  if (keyword === 'SELECT') return 'sql-keyword sql-keyword-select'
-  if (keyword === 'WHERE' || keyword === 'HAVING') return 'sql-keyword sql-keyword-filter'
-  if (keyword === 'FROM' || keyword === 'JOIN' || keyword === 'ON') return 'sql-keyword sql-keyword-source'
-  if (keyword === 'GROUP BY' || keyword === 'ORDER BY' || keyword === 'LIMIT') return 'sql-keyword sql-keyword-shape'
-  if (keyword === 'AS' || keyword === 'AND') return 'sql-keyword sql-keyword-logic'
-}
-
-function EmptyState() {
-  return <p className="empty">Run a supported query to see the execution steps.</p>
 }
 
 export default App
