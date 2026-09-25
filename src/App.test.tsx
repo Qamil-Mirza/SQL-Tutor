@@ -1,782 +1,221 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { starterQuery } from './domain/samples'
 import { createShareUrl } from './domain/shareSnapshot'
 
 afterEach(() => {
-  window.history.pushState({}, '', '/')
+  window.history.replaceState({}, '', '/')
   window.localStorage.clear()
+  vi.restoreAllMocks()
 })
 
-async function advanceToQueryPage(user: Pick<typeof userEvent, 'click'> = userEvent) {
-  await user.click(screen.getByRole('button', { name: 'Continue to Query' }))
+function renderApp(search = '') {
+  window.history.replaceState({}, '', `/${search}`)
+  return render(<App />)
+}
+
+async function setQuery(sql: string) {
+  const editor = screen.getByRole('textbox', { name: 'SQL query' })
+  await userEvent.clear(editor)
+  await userEvent.type(editor, sql)
+  await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
+}
+
+function stepPosition() {
+  return screen.getByText(/^Step \d+ of \d+$/).textContent
 }
 
 describe('App', () => {
-  it('starts on a focused table creation page', () => {
-    render(<App />)
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('heading', { name: 'Tables' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Table creation page')).toContainElement(screen.getByRole('heading', { name: 'Create table' }))
-    expect(screen.queryByRole('heading', { name: 'Run a query' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
-  })
-
-  it('applies valid table SQL before navigating to the query page', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
-    await advanceToQueryPage()
-
-    expect(window.location.pathname).toBe('/query')
-    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Query page table context')).toHaveTextContent('pets')
-    expect(screen.getByText('Miso')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Table SQL')).not.toBeInTheDocument()
-  })
-
-  it('formats table SQL from a button and before applying tables', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso'), (2, 'Nori');")
-    await userEvent.click(screen.getByRole('button', { name: 'Format table SQL' }))
-
-    expect(screen.getByLabelText('Table SQL')).toHaveValue([
-      'CREATE TABLE pets (',
-      '    id,',
-      '    name',
-      ');',
-      'INSERT INTO pets',
-      "VALUES (1, 'Miso'),",
-      "       (2, 'Nori');",
-    ].join('\n'))
-
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "create table pets (id, name); insert into pets values (1, 'Miso'), (2, 'Nori');")
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-
-    expect(screen.getByLabelText('Table SQL')).toHaveValue([
-      'CREATE TABLE pets (',
-      '    id,',
-      '    name',
-      ');',
-      'INSERT INTO pets',
-      "VALUES (1, 'Miso'),",
-      "       (2, 'Nori');",
-    ].join('\n'))
-  })
-
-  it('stays on the table page when table SQL is invalid', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
-    await advanceToQueryPage()
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
-    expect(screen.queryByRole('heading', { name: 'Query' })).not.toBeInTheDocument()
-  })
-
-  it('requires valid table SQL before using workflow navigation to query', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
-    await userEvent.click(screen.getByRole('button', { name: 'Query' }))
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
-  })
-
-  it('requires valid table SQL before using workflow navigation to trace', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), 'SELECT * FROM users')
-    await userEvent.click(screen.getByRole('button', { name: 'Trace' }))
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
-    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
-  })
-
-  it('redirects direct query route entry when saved table SQL is invalid', () => {
-    window.localStorage.setItem(
-      'c88c-sql-tutor-workspace',
-      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
-    )
-    window.history.pushState({}, '', '/query')
-
-    render(<App />)
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
-    expect(screen.queryByRole('heading', { name: 'Query' })).not.toBeInTheDocument()
-  })
-
-  it('redirects direct visualization route entry when saved table SQL is invalid', () => {
-    window.localStorage.setItem(
-      'c88c-sql-tutor-workspace',
-      JSON.stringify({ tables: [], tableSql: 'SELECT * FROM users', sql: 'SELECT * FROM users' }),
-    )
-    window.history.pushState({}, '', '/visualization')
-
-    render(<App />)
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByRole('alert')).toHaveTextContent('Use CREATE TABLE')
-    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
-  })
-
-  it('contains wide table previews inside the table creation page', () => {
-    render(<App />)
-    expect(screen.getByLabelText('Table creation page').querySelector('.table-overflow-boundary')).toBeInTheDocument()
-  })
-
-  it('runs the starter query and navigates steps', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(window.location.pathname).toBe('/visualization')
+  it('traces the starter query on first load with the query pinned and clause highlighted', () => {
+    renderApp()
+    expect(screen.queryByRole('button', { name: 'Start visualizing SQL' })).not.toBeInTheDocument()
+    expect(stepPosition()).toBe('Step 1 of 4')
     expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
-    await userEvent.click(screen.getByLabelText('Next step'))
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2")
+    expect(screen.getByLabelText('Full SQL query').querySelector('.active-query-clause')).toHaveTextContent('FROM users AS u')
+  })
+
+  it('moves through the timeline with buttons, pills and arrow keys', async () => {
+    renderApp()
+    await userEvent.click(screen.getByRole('button', { name: 'Next →' }))
+    expect(stepPosition()).toBe('Step 2 of 4')
     expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Full SQL query').querySelector('.active-query-clause')).toHaveTextContent("WHERE u.tier = 'pro'")
+
+    await userEvent.keyboard('{ArrowRight}')
+    expect(stepPosition()).toBe('Step 3 of 4')
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(stepPosition()).toBe('Step 2 of 4')
+
+    await userEvent.click(screen.getByRole('button', { name: '4 LIMIT' }))
+    expect(stepPosition()).toBe('Step 4 of 4')
+    expect(screen.getByRole('region', { name: 'Final result' })).toBeInTheDocument()
+    expect(screen.getByText('Nothing trimmed: 2 rows, limit is 2.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next →' })).toBeDisabled()
   })
 
-  it('formats query SQL from a button and before running the query', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), "select u.name as person from users as u where u.tier = 'pro'")
-    await userEvent.click(screen.getByRole('button', { name: 'Format query SQL' }))
-
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT u.name AS person',
-      '  FROM users AS u',
-      " WHERE u.tier = 'pro'",
-    ].join('\n'))
-
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), "select u.name as person from users as u where u.tier = 'pro'")
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    expect(window.location.pathname).toBe('/visualization')
-    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue([
-      'SELECT u.name AS person',
-      '  FROM users AS u',
-      " WHERE u.tier = 'pro'",
-    ].join('\n'))
+  it('does not move the timeline when arrow keys are pressed inside an editor', async () => {
+    renderApp()
+    await userEvent.click(screen.getByRole('textbox', { name: 'SQL query' }))
+    await userEvent.keyboard('{ArrowRight}')
+    expect(stepPosition()).toBe('Step 1 of 4')
   })
 
-  it('places the query heading before the back button', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-
-    const backButton = screen.getByRole('button', { name: 'Back to tables' })
-    const queryHeading = screen.getByRole('heading', { name: 'Query' })
-
-    expect(Boolean(queryHeading.compareDocumentPosition(backButton) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+  it('shows Before and After together for WHERE', async () => {
+    renderApp()
+    await userEvent.click(screen.getByRole('button', { name: 'Next →' }))
+    const before = screen.getByRole('region', { name: 'Before' })
+    const after = screen.getByRole('region', { name: 'After' })
+    expect(within(before).getByText('Ben').closest('tr')).toHaveClass('removed-row')
+    expect(within(after).queryByText('Ben')).not.toBeInTheDocument()
+    expect(screen.getByText("Kept 2 of 4 rows where u.tier = 'pro'.")).toBeInTheDocument()
   })
 
-  it('uses the brand lockup to return home to table creation', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    expect(window.location.pathname).toBe('/query')
+  it('runs a new query, resets to step 1 and shows friendly errors', async () => {
+    renderApp()
+    await setQuery('SELECT name FROM users ORDER BY name DESC')
+    expect(stepPosition()).toBe('Step 1 of 3')
+    await userEvent.click(screen.getByRole('button', { name: '3 ORDER BY' }))
+    expect(within(screen.getByRole('region', { name: 'Final result' })).getAllByText(/^was #/)).not.toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'CSM C88C SQL Visualizer home' }))
-
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.getByLabelText('Table creation page')).toBeInTheDocument()
+    await setQuery('SELECT name FROM users LIMIT 2 ORDER BY name')
+    expect(screen.getByRole('alert')).toHaveTextContent('ORDER BY must come before LIMIT.')
   })
 
-  it('separates the trace title, back action, step rail, and centered step controls', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    const titleSection = screen.getByRole('region', { name: 'Trace title and back action' })
-    const stepperSection = screen.getByRole('region', { name: 'Trace stepper' })
-
-    expect(titleSection).toContainElement(screen.getByRole('heading', { name: 'Trace' }))
-    expect(screen.getByRole('button', { name: 'Back to query' })).toHaveClass('back-button')
-    expect(titleSection).not.toContainElement(screen.getByLabelText('Step controls'))
-    expect(stepperSection).toContainElement(screen.getByLabelText('Step controls'))
-    expect(within(stepperSection).getByLabelText('Trace step rail')).toContainElement(within(stepperSection).getByText('FROM'))
-    expect(within(stepperSection).getByLabelText('Step controls')).toHaveClass('centered-step-controls')
+  it('walks grouped queries one group per step and shows HAVING verdicts', async () => {
+    renderApp()
+    await setQuery('SELECT region, COUNT(*) AS n FROM users GROUP BY region HAVING n > 1')
+    expect(stepPosition()).toBe('Step 1 of 5')
+    await userEvent.click(screen.getByRole('button', { name: '3 HAVING' }))
+    expect(screen.getAllByText('KEEP')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: '4 SELECT' }))
+    expect(screen.getByText('Collapsed group region = west (2 rows) into one result row (1 of 2).')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'After' })).getAllByRole('row')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: '5 SELECT' }))
+    expect(within(screen.getByRole('region', { name: 'Final result' })).getAllByRole('row')).toHaveLength(3)
   })
 
-  it('shows only one trace table state at a time with a before-after switch', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-
-    expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Trace table state' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Trace table state selector')).toHaveClass('centered-toggle')
-    expect(screen.getByRole('button', { name: 'Before' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('heading', { name: 'Before' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'After' })).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'After' }))
-
-    expect(screen.getByRole('button', { name: 'After' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('heading', { name: 'After' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Before' })).not.toBeInTheDocument()
+  it('shows a show-all link for a large cross join', async () => {
+    renderApp()
+    await setQuery('SELECT * FROM users, listening')
+    await userEvent.click(screen.getByRole('button', { name: '2 Cross join' }))
+    const after = screen.getByRole('region', { name: 'After' })
+    expect(within(after).getAllByRole('row')).toHaveLength(9)
+    await userEvent.click(within(after).getByRole('button', { name: 'Show all 20 rows' }))
+    expect(within(after).getAllByRole('row')).toHaveLength(21)
   })
 
-  it('shows the trace explanation as plain text before the active clause', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    const explanation = screen.getByText('Start with every row from users, labeled as alias u.')
-    const clause = screen.getByLabelText('Active SQL clause')
-
-    expect(explanation).toHaveClass('trace-comment')
-    expect(explanation).not.toHaveClass('explanation')
-    expect(explanation.compareDocumentPosition(clause) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('shows the active SQL clause for each trace step', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM users AS u')
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent("WHERE u.tier = 'pro'")
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('SELECT u.name, u.tier')
-  })
-
-  it('does not render trace detail bullets', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE friends (name, animal);',
-        "INSERT INTO friends VALUES ('Ada', 'cat');",
-        "INSERT INTO friends VALUES ('Ben', 'dog');",
-        'CREATE TABLE animals (animal, sound);',
-        "INSERT INTO animals VALUES ('cat', 'meow');",
-        "INSERT INTO animals VALUES ('dog', 'woof');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT animals.sound FROM friends, animals WHERE friends.animal = animals.animal')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    expect(screen.queryByText('2 row(s) from friends.')).not.toBeInTheDocument()
-    expect(screen.queryByText('2 row(s) from animals.')).not.toBeInTheDocument()
-    expect(document.querySelector('.detail-list')).not.toBeInTheDocument()
-  })
-
-  it('does not show duplicate FROM or pair bullets for comma joins', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE friends (name, animal);',
-        "INSERT INTO friends VALUES ('Ada', 'cat');",
-        "INSERT INTO friends VALUES ('Ben', 'dog');",
-        'CREATE TABLE animals (animal, sound);',
-        "INSERT INTO animals VALUES ('cat', 'meow');",
-        "INSERT INTO animals VALUES ('dog', 'woof');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(
-      screen.getByLabelText('SQL query editor'),
-      'SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC',
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-
-    expect(screen.getByRole('heading', { name: 'Cross join' })).toBeInTheDocument()
-    expect(screen.getAllByText('FROM')).toHaveLength(1)
-    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('FROM friends AS friends, animals AS animals')
-    expect(screen.getByLabelText('Active SQL clause')).not.toHaveTextContent('JOIN')
-    expect(screen.queryByText(/paired with/)).not.toBeInTheDocument()
-  })
-
-  it('paginates trace tables after five rows', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE numbers (id, label);',
-        "INSERT INTO numbers VALUES (1, 'one');",
-        "INSERT INTO numbers VALUES (2, 'two');",
-        "INSERT INTO numbers VALUES (3, 'three');",
-        "INSERT INTO numbers VALUES (4, 'four');",
-        "INSERT INTO numbers VALUES (5, 'five');",
-        "INSERT INTO numbers VALUES (6, 'six');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT numbers.id, numbers.label FROM numbers')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    const stateSection = screen.getByRole('region', { name: 'Trace table state' })
-    expect(within(stateSection).getByText('one')).toBeInTheDocument()
-    expect(within(stateSection).queryByText('six')).not.toBeInTheDocument()
-    expect(within(stateSection).getByText('Rows 1-5 of 6')).toBeInTheDocument()
-
-    await userEvent.click(within(stateSection).getByRole('button', { name: 'Next trace table page' }))
-
-    expect(within(stateSection).getByText('six')).toBeInTheDocument()
-    expect(within(stateSection).queryByText('one')).not.toBeInTheDocument()
-    expect(within(stateSection).getByText('Rows 6-6 of 6')).toBeInTheDocument()
-  })
-
-  it('shows the final result without an active clause panel', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    while (!screen.queryByRole('heading', { name: 'Result' })) {
-      await userEvent.click(screen.getByLabelText('Next step'))
-    }
-
-    expect(screen.queryByLabelText('Active SQL clause')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Result' })).toBeInTheDocument()
-  })
-
-  it('renders self-join visualization', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT e.name AS employee, m.name AS manager FROM employees AS e JOIN employees AS m ON e.manager_id = m.id WHERE e.salary < m.salary')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(window.location.pathname).toBe('/visualization')
-    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getByRole('heading', { name: 'JOIN' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Active SQL clause')).toHaveTextContent('JOIN employees AS m ON e.manager_id = m.id')
-  })
-
-  it('shows the right source table on the explicit JOIN before view', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE User_Data (User_ID, Top_Genre);',
-        "INSERT INTO User_Data VALUES ('tiffany123', 'Pop'), ('aidan456', 'Afrobeats');",
-        'CREATE TABLE Survey_Data (Username, Study);',
-        "INSERT INTO Survey_Data VALUES ('tiffany123', 'No'), ('aidan456', 'Yes');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(
-      screen.getByLabelText('SQL query editor'),
-      [
-        'SELECT u.Top_Genre',
-        'FROM User_Data AS u',
-        'JOIN Survey_Data AS s ON u.User_ID = s.Username',
-        "WHERE s.Study = 'No'",
-        'GROUP BY u.Top_Genre',
-        'ORDER BY COUNT(*) DESC',
-        'LIMIT 1',
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-
-    expect(screen.getByRole('heading', { name: 'JOIN' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'User_Data as u' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Survey_Data as s' })).toBeInTheDocument()
-    expect(screen.getByText('s.Username')).toBeInTheDocument()
-    expect(screen.getByText('s.Study')).toBeInTheDocument()
-  })
-
-  it('shows friendly errors', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT DISTINCT name FROM users')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(window.location.pathname).toBe('/query')
-    expect(screen.getByRole('alert')).toHaveTextContent('DISTINCT is not supported')
-  })
-
-  it('runs a query against user-defined table SQL', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    expect(screen.getByRole('heading', { name: 'pets' })).toBeInTheDocument()
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT p.name FROM pets AS p')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getAllByText('Miso').length).toBeGreaterThan(0)
-  })
-
-  it('runs a query against multi-row table SQL created from the table pane', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE User_Data (',
-        'User_ID TEXT PRIMARY KEY,',
-        'Location TEXT,',
-        'Minutes INTEGER,',
-        'Top_Genre TEXT,',
-        'Top_Artist TEXT',
-        ');',
-        'INSERT INTO User_Data VALUES',
-        "('tiffany123', 'Berkeley', 2434, 'Pop', 'Olivia Rodrigo'),",
-        "('aidan456', 'Oakland', 1800, 'Afrobeats', 'Burna Boy'),",
-        "('colleen789', 'San Jose', 3200, 'Flamenco', 'ROSALÍA');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    expect(screen.getByRole('heading', { name: 'User_Data' })).toBeInTheDocument()
-    expect(screen.getByText('ROSALÍA')).toBeInTheDocument()
-    await advanceToQueryPage()
-
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), "SELECT u.Top_Artist FROM User_Data AS u WHERE u.Location = 'San Jose'")
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getAllByText('ROSALÍA').length).toBeGreaterThan(0)
-  })
-
-  it('runs a wildcard query against user-defined table SQL without a table alias', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      "CREATE TABLE mentors (name, food, color, editor, language);{enter}INSERT INTO mentors VALUES ('Chi', 'Thai', 'Purple', 'Notepad++', 'Java');{enter}INSERT INTO mentors VALUES ('Kaitlyn', 'Pie', 'Green', 'Sublime', 'Java');",
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT * FROM mentors')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getAllByText('Chi').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Notepad++').length).toBeGreaterThan(0)
-  })
-
-  it('shows both loaded sources on the FROM step for comma joins', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      "CREATE TABLE mentors (name, language);{enter}INSERT INTO mentors VALUES ('Chi', 'Java');{enter}INSERT INTO mentors VALUES ('Kaitlyn', 'Java');",
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT m1.name, m2.name FROM mentors AS m1, mentors AS m2 WHERE m1.name > m2.name')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-
-    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'mentors as m1' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'mentors as m2' })).toBeInTheDocument()
-    expect(screen.getAllByText('Chi').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getAllByText('Kaitlyn').length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('does not run the query when applying table SQL', async () => {
-    render(<App />)
-    expect(screen.getAllByText('Ada').length).toBeGreaterThan(0)
-
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(screen.getByLabelText('Table SQL'), "CREATE TABLE users (id, name, tier, region);{enter}INSERT INTO users VALUES (1, 'Grace', 'pro', 'west');")
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    expect(screen.getByText('Grace')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/tables')
-    expect(screen.queryByRole('heading', { name: 'Trace' })).not.toBeInTheDocument()
-
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(screen.getAllByText('Grace').length).toBeGreaterThan(0)
-  })
-
-  it('uses Table SQL as the only table creation method', () => {
-    render(<App />)
-    expect(screen.getByLabelText('Table SQL')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Table creation method')).not.toBeInTheDocument()
-    expect(screen.queryByText('Fill in a table')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('users name row 1')).not.toBeInTheDocument()
-  })
-
-  it('paginates created table previews after five rows', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE numbers (id, label);',
-        "INSERT INTO numbers VALUES (1, 'one');",
-        "INSERT INTO numbers VALUES (2, 'two');",
-        "INSERT INTO numbers VALUES (3, 'three');",
-        "INSERT INTO numbers VALUES (4, 'four');",
-        "INSERT INTO numbers VALUES (5, 'five');",
-        "INSERT INTO numbers VALUES (6, 'six');",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    expect(screen.getByText('one')).toBeInTheDocument()
-    expect(screen.queryByText('six')).not.toBeInTheDocument()
-    expect(screen.getByText('Rows 1-5 of 6')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next page for numbers' }))
-    expect(screen.getByText('six')).toBeInTheDocument()
-    expect(screen.queryByText('one')).not.toBeInTheDocument()
-    expect(screen.getByText('Rows 6-6 of 6')).toBeInTheDocument()
-  })
-
-  it('renders readable SQL keyword highlighting', () => {
-    window.history.pushState({}, '', '/query')
-    render(<App />)
-    expect(screen.getByText('SELECT')).toHaveClass('sql-keyword-select')
-    expect(screen.getByText('WHERE')).toHaveClass('sql-keyword-filter')
-  })
-
-  it('grows the SQL query editor for longer queries', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    const editor = screen.getByLabelText('SQL query editor')
-    expect(editor).toHaveAttribute('rows', '6')
-
+  it('keeps the Tables section collapsed when tables are valid and opens it on error', async () => {
+    renderApp()
+    const details = screen.getByText(/^Tables: users \(4\)/).closest('details')!
+    expect(details.open).toBe(false)
+    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    const editor = screen.getByLabelText('Table SQL')
     await userEvent.clear(editor)
-    await userEvent.type(
-      editor,
-      [
-        'SELECT u.name, u.tier, u.region, l.artist, l.minutes',
-        'FROM users AS u',
-        'JOIN listening AS l ON u.id = l.user_id',
-        "WHERE u.tier = 'pro'",
-        'ORDER BY l.minutes DESC',
-        'LIMIT 10',
-      ].join('{enter}'),
-    )
-
-    expect(editor).toHaveAttribute('rows', '7')
+    await userEvent.type(editor, 'CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1);')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Tables' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('INSERT into "pets" has 1 values but 2 columns.')
+    expect(details.open).toBe(true)
   })
 
-  it('colors selected columns green on the SELECT step', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByRole('button', { name: 'After' }))
-    const selectedHeaders = screen.getAllByRole('columnheader').filter((header) => header.classList.contains('selected-column'))
-    expect(selectedHeaders.map((header) => header.textContent)).toEqual(expect.arrayContaining(['u.name', 'u.tier']))
+  it('reports an unknown table after tables change and keeps the Tables section open', async () => {
+    renderApp()
+    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    const editor = screen.getByLabelText('Table SQL')
+    await userEvent.clear(editor)
+    await userEvent.type(editor, "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Tables' }))
+    expect(screen.getByText('Tables: pets (1)')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Unknown table "users". Available tables: pets.')
+    expect(screen.getByText('Tables: pets (1)').closest('details')!.open).toBe(true)
   })
 
-  it('colors aliased and expression source columns on the SELECT before table', async () => {
-    render(<App />)
-    await userEvent.clear(screen.getByLabelText('Table SQL'))
-    await userEvent.type(
-      screen.getByLabelText('Table SQL'),
-      [
-        'CREATE TABLE staff (name, location, single, budget, in_state);',
-        "INSERT INTO staff VALUES ('Alicia', 'Downtown', TRUE, 1100, FALSE);",
-        'CREATE TABLE apartments (name, rent, location, single);',
-        "INSERT INTO apartments VALUES ('Identity', 900, 'Downtown', TRUE);",
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Create Tables' }))
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(
-      screen.getByLabelText('SQL query editor'),
-      [
-        'SELECT s.name AS staff_name, s.in_state AS in_state, a.name AS apartment_name, s.budget - a.rent AS budget_surplus',
-        'FROM staff AS s',
-        'JOIN apartments AS a ON s.location = a.location AND s.single = a.single',
-      ].join('{enter}'),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByRole('button', { name: 'Before' }))
-
-    const selectedHeaders = screen.getAllByRole('columnheader').filter((header) => header.classList.contains('selected-column'))
-    expect(selectedHeaders.map((header) => header.textContent)).toEqual(expect.arrayContaining(['s.name', 's.in_state', 'a.name', 's.budget', 'a.rent']))
+  it('re-traces the current query with the new tables after Apply Tables', async () => {
+    renderApp()
+    const editor = screen.getByRole('textbox', { name: 'SQL query' })
+    await userEvent.clear(editor)
+    await userEvent.type(editor, 'select name from pets')
+    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    const tableEditor = screen.getByLabelText('Table SQL')
+    await userEvent.clear(tableEditor)
+    await userEvent.type(tableEditor, "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Tables' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM pets')
+    expect(stepPosition()).toBe('Step 1 of 2')
+    expect(screen.getByText('Tables: pets (1)').closest('details')!.open).toBe(false)
   })
 
-  it('shows aggregate values on grouped query steps', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(
-      screen.getByLabelText('SQL query editor'),
-      'SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80',
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByRole('button', { name: 'After' }))
+  it('persists the workspace and restores it on reload', async () => {
+    renderApp()
+    await setQuery('SELECT name FROM users')
+    const saved = JSON.parse(window.localStorage.getItem('c88c-sql-tutor-workspace') ?? '{}')
+    expect(saved.sql).toBe('SELECT name\n  FROM users')
+    cleanup()
 
-    expect(screen.getByRole('heading', { name: 'GROUP BY' })).toBeInTheDocument()
-    expect(screen.getAllByText('COUNT(*) = 3').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('SUM(l.minutes) = 165').length).toBeGreaterThan(0)
+    window.localStorage.setItem('c88c-sql-tutor-workspace', JSON.stringify({ ...saved, sql: 'SELECT name FROM users' }))
+    renderApp()
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM users')
   })
 
-  it('marks groups removed by HAVING', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(
-      screen.getByLabelText('SQL query editor'),
-      'SELECT u.tier, COUNT(*) AS plays, SUM(l.minutes) AS minutes FROM users AS u JOIN listening AS l ON u.id = l.user_id GROUP BY u.tier HAVING SUM(l.minutes) > 80',
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-
-    expect(screen.getByRole('heading', { name: 'HAVING' })).toBeInTheDocument()
-    expect(screen.getByText('SUM(l.minutes) > 80 -> false')).toBeInTheDocument()
-    expect(screen.getByLabelText('Group free')).toHaveClass('removed-group')
-  })
-
-  it('does not show per-row sort key and rank movement on ORDER BY steps', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT u.name, u.tier FROM users AS u ORDER BY u.name DESC')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    await userEvent.click(screen.getByLabelText('Next step'))
-
-    expect(screen.getByRole('heading', { name: 'ORDER BY' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('ORDER BY sort keys')).not.toBeInTheDocument()
-    expect(screen.queryByText('u.name DESC = Dina')).not.toBeInTheDocument()
-    expect(screen.queryByText('4 -> 1')).not.toBeInTheDocument()
-  })
-
-  it('shows the visualization page as a focused route with a back action', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(window.location.pathname).toBe('/visualization')
-    expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Tables' })).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
-    expect(window.location.pathname).toBe('/query')
-    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
-  })
-
-  it('opens a shared link directly on the query page', () => {
-    const shareUrl = createShareUrl({
-      origin: window.location.origin,
-      snapshot: {
-        version: 1,
-        tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');",
-        sql: 'SELECT p.name FROM pets AS p',
-      },
+  it('keeps working when storage writes fail', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
     })
-    window.history.pushState({}, '', new URL(shareUrl).pathname + new URL(shareUrl).search)
-
-    render(<App />)
-
-    expect(window.location.pathname).toBe('/query')
-    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
-    expect(screen.getAllByText('Miso').length).toBeGreaterThan(0)
+    renderApp()
+    expect(screen.getByLabelText('Full SQL query')).toBeInTheDocument()
   })
 
-  it('keeps the original shared link immutable when a viewer edits locally', async () => {
-    const shareUrl = createShareUrl({
-      origin: window.location.origin,
-      snapshot: {
-        version: 1,
-        tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');",
-        sql: 'SELECT p.name FROM pets AS p',
-      },
-    })
-    const sharedLocation = new URL(shareUrl)
-    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
-
-    const { unmount } = render(<App />)
-    await userEvent.clear(screen.getByLabelText('SQL query editor'))
-    await userEvent.type(screen.getByLabelText('SQL query editor'), 'SELECT p.id FROM pets AS p')
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.id FROM pets AS p')
-
-    unmount()
-    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
-    render(<App />)
-
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue('SELECT p.name FROM pets AS p')
+  it('opens a share link as a sandbox without touching the saved workspace', async () => {
+    window.localStorage.setItem('c88c-sql-tutor-workspace', JSON.stringify({ tables: [], tableSql: 'CREATE TABLE mine (a);', sql: 'SELECT a FROM mine' }))
+    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');", sql: 'SELECT name FROM pets' } }))
+    renderApp(url.search)
+    expect(screen.getByText('Tables: pets (1)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM pets')
+    await setQuery('SELECT id FROM pets')
+    expect(JSON.parse(window.localStorage.getItem('c88c-sql-tutor-workspace')!).sql).toBe('SELECT a FROM mine')
   })
 
-  it('shows a loading share modal before revealing the current workspace share link', async () => {
-    const { unmount } = render(<App />)
-    await advanceToQueryPage()
+  it('loads a share link whose query fails and shows the error above an empty trace', () => {
+    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql: 'CREATE TABLE pets (id);\nINSERT INTO pets VALUES (1);', sql: 'SELECT nope FROM pets' } }))
+    renderApp(url.search)
+    expect(screen.getByRole('alert')).toHaveTextContent('Unknown column "nope".')
+    expect(screen.queryByText(/^Step \d+ of \d+$/)).not.toBeInTheDocument()
+    expect(screen.getByText('Run a supported query to see the execution steps.')).toBeInTheDocument()
+  })
+
+  it('shows the share link immediately and copies it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(window.navigator, { clipboard: { writeText } })
+    renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
-
-    expect(screen.getByRole('dialog', { name: 'Share link' })).toBeInTheDocument()
-    expect(screen.getByText('Preparing share link')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Share link' })).not.toBeInTheDocument()
-
-    await new Promise((resolve) => setTimeout(resolve, 1100))
-
-    const shareLink = screen.getByRole('textbox', { name: 'Share link' })
-    expect((shareLink as HTMLInputElement).value).toContain('/query?share=')
-
-    const sharedLocation = new URL((shareLink as HTMLInputElement).value)
-    unmount()
-    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
-    render(<App />)
-    expect(screen.getByRole('heading', { name: 'Query' })).toBeInTheDocument()
-    expect(screen.getByLabelText('SQL query editor')).toHaveValue(starterQuery)
+    const dialog = screen.getByRole('dialog', { name: 'Share link' })
+    expect((within(dialog).getByLabelText('Share link') as HTMLInputElement).value).toContain('share=')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }))
+    expect(writeText).toHaveBeenCalled()
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Copied')
   })
 
-  it('dismisses the share modal with the close button', async () => {
-    render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Share' }))
+  it('keeps the pinned query on the traced SQL while the editor changes and after a failed run', async () => {
+    renderApp()
+    const editor = screen.getByRole('textbox', { name: 'SQL query' })
+    await userEvent.type(editor, ' -- note')
+    expect(screen.getByLabelText('Full SQL query')).not.toHaveTextContent('-- note')
+    expect(screen.getByLabelText('Full SQL query').querySelector('.active-query-clause')).toHaveTextContent('FROM users AS u')
 
-    expect(screen.getByRole('dialog', { name: 'Share link' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Close share dialog' }))
-
-    expect(screen.queryByRole('dialog', { name: 'Share link' })).not.toBeInTheDocument()
+    await setQuery('SELECT name FROM users LIMIT 2 ORDER BY name')
+    expect(screen.getByRole('alert')).toHaveTextContent('ORDER BY must come before LIMIT.')
+    expect(stepPosition()).toBe('Step 1 of 4')
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2")
   })
 
-  it('starts shared links at the beginning even when created after visiting a later trace step', async () => {
-    const { unmount } = render(<App />)
-    await advanceToQueryPage()
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    await userEvent.click(screen.getByLabelText('Next step'))
-    expect(screen.getByRole('heading', { name: 'WHERE' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Back to query' }))
+  it('ignores arrow keys while the share dialog is open or a modifier is held', async () => {
+    renderApp()
+    await userEvent.keyboard('{Alt>}{ArrowRight}{/Alt}')
+    expect(stepPosition()).toBe('Step 1 of 4')
     await userEvent.click(screen.getByRole('button', { name: 'Share' }))
-    await new Promise((resolve) => setTimeout(resolve, 1100))
-
-    const shareLink = screen.getByRole('textbox', { name: 'Share link' })
-    const sharedLocation = new URL((shareLink as HTMLInputElement).value)
-    unmount()
-    window.history.pushState({}, '', sharedLocation.pathname + sharedLocation.search)
-    render(<App />)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
-    expect(screen.getByRole('heading', { name: 'FROM' })).toBeInTheDocument()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(stepPosition()).toBe('Step 1 of 4')
   })
 })

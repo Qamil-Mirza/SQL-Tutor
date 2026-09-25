@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { executeQuery } from './engine'
 import { parseQuery, QueryParseError } from './parser'
-import type { Table } from './types'
+import type { AliasedRow, Table } from './types'
 
 // Canonical Berkeley C88C / CS61A SQL teaching dataset (dogs of US presidents).
 const dogsTables: Table[] = [
@@ -46,7 +46,8 @@ const dogsTables: Table[] = [
 
 function rowsFor(sql: string) {
   const steps = executeQuery(parseQuery(sql), dogsTables)
-  return steps.at(-1)!.after
+  // The final step is always row-producing (select/selectGroup/orderBy/limit), never raw groups.
+  return steps.at(-1)!.after as AliasedRow[]
 }
 
 describe('C88C: basic selects and filtering', () => {
@@ -132,7 +133,7 @@ describe('C88C: joins', () => {
     const rows = rowsFor(
       'SELECT d.name, p.parent FROM dogs AS d JOIN parents AS p ON d.name = p.child WHERE d.height > 40',
     )
-    expect(rows.map((row) => [row.values['d.name'], row.values['p.parent']])).toEqual([
+    expect(rows.map((row) => [row.values.name, row.values.parent])).toEqual([
       ['barack', 'abraham'],
       ['clinton', 'abraham'],
       ['delano', 'fillmore'],

@@ -1,3 +1,4 @@
+import { isQuotedString, maskStrings, splitOutsideStrings, splitTopLevel, unquoteString } from './sqlText'
 import type { Row, Scalar, Table } from './types'
 
 export class TableDefinitionError extends Error {
@@ -20,8 +21,7 @@ export function serializeTables(tables: Table[]) {
 }
 
 export function parseTableSql(input: string): Table[] {
-  const statements = input
-    .split(';')
+  const statements = splitOutsideStrings(input, /;/)
     .map((statement) => statement.trim())
     .filter(Boolean)
   const tables = new Map<string, Table>()
@@ -29,18 +29,25 @@ export function parseTableSql(input: string): Table[] {
   for (const statement of statements) {
     const create = statement.match(/^CREATE\s+TABLE\s+([a-z_][\w]*)\s*\((.+)\)$/is)
     if (create) {
-      const columns = splitComma(create[2]).map((part) => part.trim().split(/\s+/)[0]).filter(Boolean)
-      if (!columns.length) throw new TableDefinitionError(`Table "${create[1]}" needs at least one column.`)
-      tables.set(create[1], { name: create[1], columns, rows: [] })
+      const name = create[1]
+      if (tables.has(name.toLowerCase())) throw new TableDefinitionError(`Table "${name}" is already defined.`)
+      const columns = splitTopLevel(create[2]).map((part) => part.trim().split(/\s+/)[0]).filter(Boolean)
+      if (!columns.length) throw new TableDefinitionError(`Table "${name}" needs at least one column.`)
+      const seen = new Set<string>()
+      for (const column of columns) {
+        if (seen.has(column.toLowerCase())) throw new TableDefinitionError(`Table "${name}" has duplicate column "${column}".`)
+        seen.add(column.toLowerCase())
+      }
+      tables.set(name.toLowerCase(), { name, columns, rows: [] })
       continue
     }
 
     const insert = statement.match(/^INSERT\s+INTO\s+([a-z_][\w]*)\s+VALUES\s+(.+)$/is)
     if (insert) {
-      const table = tables.get(insert[1])
+      const table = tables.get(insert[1].toLowerCase())
       if (!table) throw new TableDefinitionError(`INSERT references unknown table "${insert[1]}". Define it with CREATE TABLE first.`)
       for (const rowText of splitInsertRows(insert[2])) {
-        const values = splitComma(rowText).map(parseValue)
+        const values = splitTopLevel(rowText).map(parseValue)
         if (values.length !== table.columns.length) {
           throw new TableDefinitionError(`INSERT into "${table.name}" has ${values.length} values but ${table.columns.length} columns.`)
         }
@@ -57,7 +64,7 @@ export function parseTableSql(input: string): Table[] {
 
 function parseValue(value: string): Scalar {
   const trimmed = value.trim()
-  if (/^'.*'$/.test(trimmed)) return trimmed.slice(1, -1)
+  if (isQuotedString(trimmed)) return unquoteString(trimmed)
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed)
   if (/^null$/i.test(trimmed)) return null
   return trimmed
@@ -69,57 +76,27 @@ function formatValue(value: Scalar) {
   return `'${String(value).replaceAll("'", "''")}'`
 }
 
-function splitComma(text: string) {
-  const parts: string[] = []
-  let inQuote = false
-  let current = ''
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]
-    if (char === "'") inQuote = !inQuote
-    if (char === ',' && !inQuote) {
-      parts.push(current.trim())
-      current = ''
-    } else {
-      current += char
-    }
-  }
-  if (current.trim()) parts.push(current.trim())
-  return parts
-}
-
 function splitInsertRows(text: string) {
+  const masked = maskStrings(text)
   const rows: string[] = []
-  let inQuote = false
   let depth = 0
-  let current = ''
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]
-    if (char === "'") inQuote = !inQuote
-    if (!inQuote && char === '(') {
-      if (depth > 0) current += char
+  let start = 0
+  for (let index = 0; index < masked.length; index += 1) {
+    const char = masked[index]
+    if (char === '(') {
+      if (depth === 0) start = index + 1
       depth += 1
       continue
     }
-    if (!inQuote && char === ')') {
+    if (char === ')') {
       depth -= 1
-      if (depth === 0) {
-        rows.push(current.trim())
-        current = ''
-      } else {
-        current += char
-      }
+      if (depth === 0) rows.push(text.slice(start, index).trim())
       continue
     }
-    if (depth > 0) {
-      current += char
-      continue
-    }
-    if (!/\s|,/.test(char)) {
+    if (depth === 0 && !/\s|,/.test(char)) {
       throw new TableDefinitionError(`Unsupported INSERT values: ${text.trim()}. Use parenthesized row values.`)
     }
   }
-  if (depth !== 0 || inQuote) {
-    throw new TableDefinitionError(`Unsupported INSERT values: ${text.trim()}. Check parentheses and quotes.`)
-  }
+  if (depth !== 0) throw new TableDefinitionError(`Unsupported INSERT values: ${text.trim()}. Check parentheses and quotes.`)
   return rows
 }

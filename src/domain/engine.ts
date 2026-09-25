@@ -1,3 +1,4 @@
+import { collectAggregates } from './parser'
 import type {
   AliasedRow,
   Condition,
@@ -19,199 +20,267 @@ export class QueryExecutionError extends Error {
   }
 }
 
+type Scope = { qualified: boolean; aliases: string[] }
+type Context = { row?: AliasedRow; group?: Group }
+type AliasMap = Map<string, Expression>
+
+export function formatScalar(value: Scalar | undefined) {
+  return value === null || value === undefined ? '' : String(value)
+}
+
 export function executeQuery(ast: QueryAST, tables: Table[]): ExecutionStep[] {
   const steps: ExecutionStep[] = []
+  const scope: Scope = { qualified: Boolean(ast.join), aliases: [ast.from.alias, ...(ast.join ? [ast.join.alias] : [])] }
+  const aliasMap = selectAliasMap(ast.select)
   const fromTable = requireTable(tables, ast.from.tableName)
-  const commaJoinTable = ast.join?.syntax === 'comma' ? requireTable(tables, ast.join.tableName) : undefined
-  let rows = aliasRows(fromTable, ast.from.alias)
-  const rightSourceRows = commaJoinTable ? aliasRows(commaJoinTable, ast.join!.alias) : undefined
+  const joinTable = ast.join ? requireTable(tables, ast.join.tableName) : undefined
+  const isComma = ast.join?.syntax === 'comma'
+  let rows = aliasRows(fromTable, ast.from.alias, scope)
+  const rightRows = ast.join && joinTable ? aliasRows(joinTable, ast.join.alias, scope) : []
+  validateColumns(ast, aliasMap, scope, [
+    { alias: ast.from.alias, table: fromTable },
+    ...(ast.join && joinTable ? [{ alias: ast.join.alias, table: joinTable }] : []),
+  ])
+
+  const fromLabel = sourceLabel(fromTable, ast.from.alias)
+  const rightLabel = ast.join && joinTable ? sourceLabel(joinTable, ast.join.alias) : ''
   steps.push({
     id: 'from',
     kind: 'from',
     title: 'FROM',
-    clause: `FROM ${fromTable.name} AS ${ast.from.alias}${commaJoinTable ? `, ${commaJoinTable.name} AS ${ast.join!.alias}` : ''}`,
-    explanation: commaJoinTable
-      ? `Start with every row from ${fromTable.name} as ${ast.from.alias} and ${commaJoinTable.name} as ${ast.join!.alias}.`
-      : `Start with every row from ${fromTable.name}, labeled as alias ${ast.from.alias}.`,
+    clause: ast.clauses.from,
+    summary: isComma
+      ? `Start with all ${count(rows.length, 'row')} of ${fromLabel} and all ${count(rightRows.length, 'row')} of ${rightLabel}.`
+      : `Start with all ${count(rows.length, 'row')} of ${fromLabel}.`,
     after: rows,
-    sources: [
-      { label: `${fromTable.name} as ${ast.from.alias}`, rows },
-      ...(commaJoinTable && rightSourceRows ? [{ label: `${commaJoinTable.name} as ${ast.join!.alias}`, rows: rightSourceRows }] : []),
-    ],
-    display: { afterLabel: 'Load in' },
-    details: commaJoinTable
-      ? [`${rows.length} row(s) from ${ast.from.alias}.`, `${commaJoinTable.rows.length} row(s) from ${ast.join!.alias}.`]
-      : [`${rows.length} source rows are now available.`],
-    highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
+    sources: [{ label: fromLabel, rows }, ...(isComma ? [{ label: rightLabel, rows: rightRows }] : [])],
+    highlights: [],
   })
 
-  if (ast.join) {
-    const rightTable = requireTable(tables, ast.join.tableName)
+  if (ast.join && joinTable) {
     const before = rows
-    const rightRows = aliasRows(rightTable, ast.join.alias)
-    const joined: AliasedRow[] = []
-    const details: string[] | undefined = ast.join.syntax === 'comma' ? undefined : []
-    const joinConditions = ast.join.conditions ?? (ast.join.condition ? [ast.join.condition] : [])
-    const joinConditionLabel = joinConditions.map((condition) => condition.label).join(' AND ')
-    for (const left of rows) {
+    const paired: AliasedRow[] = []
+    const leftMatches = new Map<string, string[]>()
+    const matchedRight = new Set<string>()
+    for (const left of before) {
       for (const right of rightRows) {
         const candidate = mergeRows(left, right)
-        if (!joinConditions.length || joinConditions.every((condition) => evaluateCondition(condition, candidate))) {
-          joined.push(candidate)
-          details?.push(`${left.id} matched ${right.id} on ${joinConditionLabel}`)
+        if (ast.join.conditions.every((condition) => evaluateCondition(condition, { row: candidate }, scope))) {
+          paired.push(candidate)
+          leftMatches.set(left.id, [...(leftMatches.get(left.id) ?? []), right.id])
+          matchedRight.add(right.id)
         }
       }
     }
-    rows = joined
-    const isCommaJoin = ast.join.syntax === 'comma'
+    rows = paired
+    const unmatched = [
+      ...before.filter((row) => !leftMatches.has(row.id)),
+      ...rightRows.filter((row) => !matchedRight.has(row.id)),
+    ].map((row) => row.id)
+    const conditionLabel = ast.join.conditions.map((condition) => condition.label).join(' AND ')
+    const pairs = `${before.length} × ${rightRows.length}`
     steps.push({
       id: 'join',
       kind: 'join',
-      title: isCommaJoin ? 'Cross join' : 'JOIN',
-      clause: !isCommaJoin && joinConditions.length
-        ? `JOIN ${rightTable.name} AS ${ast.join.alias} ON ${joinConditionLabel}`
-        : `FROM ${ast.from.tableName} AS ${ast.from.alias}, ${rightTable.name} AS ${ast.join.alias}`,
-      explanation: joinConditions.length
-        ? `Pair rows from ${ast.from.alias} and ${ast.join.alias} when the ON condition is true.`
-        : `Pair every row from ${ast.from.alias} with every row from ${ast.join.alias}.`,
+      title: isComma ? 'Cross join' : 'JOIN',
+      clause: isComma ? ast.clauses.from : ast.clauses.join,
+      summary: isComma
+        ? `Paired every row of ${ast.from.alias} with every row of ${ast.join.alias}: ${pairs} = ${before.length * rightRows.length} pairs.`
+        : `Paired ${paired.length} of the ${pairs} possible combinations where ${conditionLabel}.${unmatched.length ? ` ${unmatched.join(', ')} had no match.` : ''}`,
       before,
       after: rows,
       sources: [
-        { label: `${fromTable.name} as ${ast.from.alias}`, rows: before },
-        { label: `${rightTable.name} as ${ast.join.alias}`, rows: rightRows },
+        { label: fromLabel, rows: before },
+        { label: rightLabel, rows: rightRows },
       ],
-      display: { beforeLabel: 'Before' },
-      details,
-      highlights: [
-        { kind: 'matched', rowIds: rows.map((row) => row.id) },
-        { kind: 'selected', columnKeys: rightTable.columns.map((column) => `${ast.join!.alias}.${column}`) },
-      ],
+      details: isComma ? undefined : [...leftMatches].map(([leftId, rightIds]) => `${leftId} ↔ ${rightIds.join(', ')}`),
+      highlights: isComma
+        ? []
+        : [
+            { kind: 'selected', columnKeys: ast.join.conditions.flatMap((condition) => conditionColumnKeys(condition, aliasMap)) },
+            { kind: 'unmatched', rowIds: unmatched },
+          ],
     })
   }
 
-  if (ast.where.length) {
-    ast.where.forEach((condition, index) => {
-      const before = rows
-      rows = rows.filter((row) => evaluateCondition(condition, row))
-      steps.push({
-        id: ast.where.length === 1 ? 'where' : `where-${index + 1}`,
-        kind: 'where',
-        title: 'WHERE',
-        clause: `WHERE ${condition.label}`,
-        explanation: 'Filter individual rows before grouping happens.',
-        before,
-        after: rows,
-        details: [condition.label],
-        highlights: [
-          { kind: 'kept', rowIds: rows.map((row) => row.id) },
-          { kind: 'removed', rowIds: before.filter((row) => !rows.includes(row)).map((row) => row.id) },
-        ],
-      })
+  ast.where.forEach((condition, index) => {
+    const before = rows
+    rows = before.filter((row) => evaluateCondition(condition, { row }, scope))
+    steps.push({
+      id: ast.where.length === 1 ? 'where' : `where-${index + 1}`,
+      kind: 'where',
+      title: 'WHERE',
+      clause: ast.where.length === 1 ? ast.clauses.where : condition.label,
+      summary: `Kept ${rows.length} of ${count(before.length, 'row')} where ${condition.label}.`,
+      before,
+      after: rows,
+      highlights: [
+        { kind: 'selected', columnKeys: conditionColumnKeys(condition, aliasMap) },
+        { kind: 'removed', rowIds: before.filter((row) => !rows.includes(row)).map((row) => row.id) },
+      ],
     })
-  }
+  })
+
+  const needsGroups =
+    ast.groupBy.length > 0 ||
+    ast.having.length > 0 ||
+    ast.select.some((item) => collectAggregates(item.expression).length > 0) ||
+    ast.orderBy.some((item) => collectAggregates(item.expression).length > 0)
 
   let groups: Group[] | undefined
-  if (ast.groupBy.length || hasAggregates(ast.select) || ast.having.length) {
-    groups = groupRows(rows, ast.groupBy)
-    groups = attachAggregateSummaries(groups, collectAggregateExpressions(ast))
+  if (needsGroups) {
+    const groupExpressions = ast.groupBy.map((expression) => resolveAlias(expression, aliasMap))
+    for (const [index, expression] of groupExpressions.entries()) {
+      const aggregate = collectAggregates(expression)[0]
+      if (aggregate) {
+        const written = ast.groupBy[index].label
+        throw new QueryExecutionError(
+          written === aggregate.label
+            ? `${aggregate.label} can't be used in GROUP BY. Group by a column instead.`
+            : `${written} can't be used in GROUP BY because it is ${aggregate.label}. Group by a column instead.`,
+        )
+      }
+    }
+    groups = groupRows(rows, groupExpressions, ast.groupBy, scope)
+    const labels = ast.groupBy.map((expression) => expression.label).join(', ')
     steps.push({
       id: 'group',
       kind: 'groupBy',
       title: 'GROUP BY',
-      clause: ast.groupBy.length ? `GROUP BY ${ast.groupBy.map((expression) => expression.label).join(', ')}` : 'GROUP BY all rows',
-      explanation: ast.groupBy.length
-        ? 'Bucket rows by the GROUP BY expressions before aggregate calculations.'
-        : 'Treat all remaining rows as one group because aggregate functions are present.',
+      clause: ast.groupBy.length ? ast.clauses.groupBy : undefined,
+      summary: ast.groupBy.length
+        ? `Split ${count(rows.length, 'row')} into ${count(groups.length, 'group')} by ${labels}.`
+        : `No GROUP BY, so all ${count(rows.length, 'row')} form one group for the aggregates.`,
       before: rows,
       after: groups,
-      details: groups.map((group) => `${group.key}: ${group.rows.length} row(s)`),
-      highlights: [{ kind: 'grouped', groupIds: groups.map((group) => group.id) }],
+      highlights: [{ kind: 'selected', columnKeys: groupExpressions.flatMap(columnKeys) }],
     })
   }
 
   if (groups && ast.having.length) {
-    const before = attachConditionEvaluations(groups, ast.having)
-    groups = before.filter((group) => group.conditions?.every((condition) => condition.result))
+    const resolved = ast.having.map((condition) => resolveConditionAliases(condition, aliasMap))
+    const before: Group[] = groups.map((group) => {
+      const context: Context = { row: bareRow(group, ast.select, scope), group }
+      return {
+        ...group,
+        conditions: resolved.map((condition, index) => ({
+          label: ast.having[index].label,
+          result: evaluateCondition(condition, context, scope),
+          value: evaluateExpression(condition.left, context, scope),
+          leftLabel: ast.having[index].left.label,
+        })),
+      }
+    })
+    groups = before.filter((group) => group.conditions!.every((condition) => condition.result))
+    const label = ast.having.map((condition) => condition.label).join(' AND ')
     steps.push({
       id: 'having',
       kind: 'having',
       title: 'HAVING',
-      clause: `HAVING ${ast.having.map((condition) => condition.label).join(' AND ')}`,
-      explanation: 'Filter groups after aggregates are available.',
+      clause: ast.clauses.having,
+      summary: `Kept ${groups.length} of ${count(before.length, 'group')} where ${label}.`,
       before,
       after: groups,
-      details: ast.having.map((condition) => condition.label),
-      highlights: [
-        { kind: 'kept', groupIds: groups.map((group) => group.id) },
-        { kind: 'removed', groupIds: before.filter((group) => !groups?.includes(group)).map((group) => group.id) },
-      ],
+      highlights: [{ kind: 'removed', groupIds: before.filter((group) => !groups!.includes(group)).map((group) => group.id) }],
     })
   }
 
-  const beforeSelect = groups ?? rows
-  const projectionContexts = groups
-    ? groups.map((group) => ({ row: group.rows[0], group }))
-    : rows.map((row) => ({ row }))
-  rows = projectRows(ast.select, rows, groups)
-  steps.push({
-    id: 'select',
-    kind: 'select',
-    title: 'SELECT',
-    clause: `SELECT ${ast.select.map((item) => item.label).join(', ')}`,
-    explanation: 'Project the requested expressions into the visible result columns.',
-    before: beforeSelect,
-    after: rows,
-    details: ast.select.map((item) => item.label),
-    highlights: [{ kind: 'selected', columnKeys: selectHighlightColumnKeys(ast.select, rows) }],
-  })
+  const headers = resultHeaders(ast.select, scope)
+  const selectColumnKeys = ast.select.flatMap((item) => columnKeys(resolveAlias(item.expression, aliasMap)))
+  let contexts: Context[]
+  if (groups) {
+    contexts = groups.map((group) => ({ row: bareRow(group, ast.select, scope), group }))
+    const projected = contexts.map((context, index) => project(ast.select, headers, context, index, scope))
+    if (!groups.length) {
+      steps.push({
+        id: 'select',
+        kind: 'select',
+        title: 'SELECT',
+        clause: ast.clauses.select,
+        summary: 'No groups remain, so the result is empty.',
+        before: [],
+        after: [],
+        highlights: [],
+      })
+    }
+    groups.forEach((group, index) => {
+      steps.push({
+        id: `select-${index + 1}`,
+        kind: 'selectGroup',
+        title: 'SELECT',
+        clause: ast.clauses.select,
+        summary: `Collapsed group ${group.key} (${count(group.rows.length, 'row')}) into one result row (${index + 1} of ${groups!.length}).`,
+        before: [group],
+        after: projected.slice(0, index + 1),
+        highlights: [
+          { kind: 'selected', columnKeys: selectColumnKeys },
+          { kind: 'matched', rowIds: [projected[index].id] },
+        ],
+      })
+    })
+    rows = projected
+  } else {
+    contexts = rows.map((row) => ({ row }))
+    const before = rows
+    rows = contexts.map((context, index) => project(ast.select, headers, context, index, scope))
+    const shown = rows[0]?.columns ?? headers.filter((header): header is string => header !== undefined)
+    steps.push({
+      id: 'select',
+      kind: 'select',
+      title: 'SELECT',
+      clause: ast.clauses.select,
+      summary: ast.select.some((item) => item.expression.type === 'wildcard')
+        ? `Kept every column (*)${shown.length ? `: ${shown.join(', ')}` : ''}.`
+        : `Kept only the columns you asked for: ${shown.join(', ')}.`,
+      before,
+      after: rows,
+      highlights: [{ kind: 'selected', columnKeys: selectColumnKeys }],
+    })
+  }
 
   if (ast.orderBy.length) {
     const before = rows
-    const sorted = sortRows(rows, projectionContexts, ast.orderBy)
+    const sorted = sortRows(rows, contexts, ast.orderBy, aliasMap, scope)
     rows = sorted.map((item) => item.row)
-    const sortSummaries = sorted.map((item, index) => toSortSummary(item, ast.orderBy, index))
+    const description = ast.orderBy
+      .map((item) => `${item.expression.label} (${item.direction === 'DESC' ? 'highest first' : 'lowest first'})`)
+      .join(', then ')
     steps.push({
       id: 'order-by',
       kind: 'orderBy',
       title: 'ORDER BY',
-      clause: `ORDER BY ${ast.orderBy.map((item) => item.label).join(', ')}`,
-      explanation: 'Sort the projected result rows before LIMIT is applied.',
+      clause: ast.clauses.orderBy,
+      summary: `Sorted ${count(before.length, 'row')} by ${description}.`,
       before,
       after: rows,
-      details: ast.orderBy.map((item) => item.label),
-      highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
-      sortSummaries,
+      highlights: [{ kind: 'selected', columnKeys: ast.orderBy.flatMap((item) => [...columnKeys(item.expression), ...columnKeys(resolveAlias(item.expression, aliasMap))]) }],
+      sortSummaries: sorted.map((item, index) => toSortSummary(item, ast.orderBy, index)),
     })
   }
 
   if (ast.limit !== undefined) {
     const before = rows
     rows = rows.slice(0, ast.limit)
+    const trimmed = before.length - rows.length
     steps.push({
       id: 'limit',
       kind: 'limit',
       title: 'LIMIT',
-      clause: `LIMIT ${ast.limit}`,
-      explanation: `Keep only the first ${ast.limit} row(s) after projection.`,
+      clause: ast.clauses.limit,
+      summary: trimmed > 0
+        ? `Kept the first ${ast.limit} of ${count(before.length, 'row')}.`
+        : `Nothing trimmed: ${count(before.length, 'row')}, limit is ${ast.limit}.`,
       before,
       after: rows,
-      details: [`${Math.max(0, before.length - rows.length)} row(s) trimmed.`],
-      highlights: [
-        { kind: 'kept', rowIds: rows.map((row) => row.id) },
-        { kind: 'removed', rowIds: before.filter((row) => !rows.includes(row)).map((row) => row.id) },
-      ],
+      highlights: [{ kind: 'removed', rowIds: before.slice(ast.limit).map((row) => row.id) }],
     })
   }
 
-  steps.push({
-    id: 'result',
-    kind: 'result',
-    title: 'Result',
-    explanation: 'This is the final result produced by the logical execution order.',
-    after: rows,
-    highlights: [{ kind: 'kept', rowIds: rows.map((row) => row.id) }],
-  })
   return steps
+}
+
+function count(n: number, noun: string) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`
 }
 
 function requireTable(tables: Table[], name: string) {
@@ -220,219 +289,288 @@ function requireTable(tables: Table[], name: string) {
   return table
 }
 
-function aliasRows(table: Table, alias: string): AliasedRow[] {
+function sourceLabel(table: Table, alias: string) {
+  return alias.toLowerCase() === table.name.toLowerCase() ? table.name : `${table.name} (as ${alias})`
+}
+
+function aliasRows(table: Table, alias: string, scope: Scope): AliasedRow[] {
   return table.rows.map((row, index) => ({
-    id: `${alias}:${table.name}-${index + 1}`,
-    provenance: [`${table.name}-${index + 1}`],
-    values: Object.fromEntries(table.columns.map((column) => [`${alias}.${column}`, row[column]])),
+    id: `${alias}${index + 1}`,
+    values: Object.fromEntries(table.columns.map((column) => [scope.qualified ? `${alias}.${column}` : column, row[column] ?? null])),
   }))
 }
 
 function mergeRows(left: AliasedRow, right: AliasedRow): AliasedRow {
-  return {
-    id: `${left.id}+${right.id}`,
-    provenance: [...left.provenance, ...right.provenance],
-    values: { ...left.values, ...right.values },
-  }
+  return { id: `${left.id}+${right.id}`, values: { ...left.values, ...right.values } }
 }
 
-function evaluateCondition(condition: Condition, row: AliasedRow, group?: Group) {
-  const left = evaluateExpression(condition.left, row, group)
-  const right = evaluateExpression(condition.right, row, group)
+function selectAliasMap(select: SelectItem[]): AliasMap {
+  const map: AliasMap = new Map()
+  for (const item of select) if (item.alias) map.set(item.alias.toLowerCase(), item.expression)
+  return map
+}
+
+function resolveAlias(expression: Expression, aliasMap: AliasMap): Expression {
+  if (expression.type === 'column' && !expression.tableAlias) {
+    const target = aliasMap.get(expression.column.toLowerCase())
+    if (target) return target
+  }
+  if (expression.type === 'binary') {
+    return { ...expression, left: resolveAlias(expression.left, aliasMap), right: resolveAlias(expression.right, aliasMap) }
+  }
+  return expression
+}
+
+function resolveConditionAliases(condition: Condition, aliasMap: AliasMap): Condition {
+  return { ...condition, left: resolveAlias(condition.left, aliasMap), right: resolveAlias(condition.right, aliasMap) }
+}
+
+function evaluateCondition(condition: Condition, context: Context, scope: Scope): boolean {
+  const left = evaluateExpression(condition.left, context, scope)
+  if (condition.operator === 'IS') return left === null
+  if (condition.operator === 'IS NOT') return left !== null
+  const right = evaluateExpression(condition.right, context, scope)
+  if (left === null || right === null) return false
+  const comparison = compareScalars(left, right)
   switch (condition.operator) {
     case '=':
-      return left === right
+      return comparison === 0
     case '!=':
     case '<>':
-      return left !== right
+      return comparison !== 0
     case '>':
-      return compareScalars(left, right) > 0
+      return comparison > 0
     case '<':
-      return compareScalars(left, right) < 0
+      return comparison < 0
     case '>=':
-      return compareScalars(left, right) >= 0
+      return comparison >= 0
     case '<=':
-      return compareScalars(left, right) <= 0
+      return comparison <= 0
   }
 }
 
-function compareScalars(left: Scalar, right: Scalar) {
-  const leftNumber = Number(left)
-  const rightNumber = Number(right)
-  if (!Number.isNaN(leftNumber) && !Number.isNaN(rightNumber)) return leftNumber - rightNumber
-  return String(left).localeCompare(String(right))
+function toNumber(value: Scalar): number | undefined {
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value ? 1 : 0
+  if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value)
+  return undefined
 }
 
-function evaluateExpression(expression: Expression, row: AliasedRow, group?: Group): Scalar {
+export function compareScalars(left: Scalar, right: Scalar) {
+  if (left === null && right === null) return 0
+  if (left === null) return -1
+  if (right === null) return 1
+  const leftNumber = toNumber(left)
+  const rightNumber = toNumber(right)
+  if (leftNumber !== undefined && rightNumber !== undefined) return leftNumber - rightNumber
+  if (leftNumber !== undefined) return -1
+  if (rightNumber !== undefined) return 1
+  const l = String(left)
+  const r = String(right)
+  return l < r ? -1 : l > r ? 1 : 0
+}
+
+function evaluateExpression(expression: Expression, context: Context, scope: Scope): Scalar {
   if (expression.type === 'literal') return expression.value
-  if (expression.type === 'column') return readColumn(row, expression)
   if (expression.type === 'wildcard') throw new QueryExecutionError('SELECT * can only be used as a projection.')
-  if (expression.type === 'binary') return evaluateBinaryExpression(expression, row, group)
-  const rows = group?.rows ?? [row]
-  if (expression.fn === 'COUNT') return rows.length
-  const values = rows.map((item) => Number(evaluateExpression(expression.column!, item))).filter((value) => !Number.isNaN(value))
-  if (expression.fn === 'SUM') return values.reduce((total, value) => total + value, 0)
-  if (expression.fn === 'AVG') return values.reduce((total, value) => total + value, 0) / values.length
-  if (expression.fn === 'MIN') return Math.min(...values)
-  return Math.max(...values)
+  if (expression.type === 'column') return context.row ? readColumn(context.row, expression, scope) : null
+  if (expression.type === 'binary') return evaluateBinary(expression, context, scope)
+  const rows = context.group?.rows ?? (context.row ? [context.row] : [])
+  if (expression.fn === 'COUNT') {
+    if (!expression.column) return rows.length
+    return rows.filter((row) => evaluateExpression(expression.column!, { row }, scope) !== null).length
+  }
+  const values = rows.map((row) => evaluateExpression(expression.column!, { row }, scope)).filter((value) => value !== null)
+  if (!values.length) return null
+  if (expression.fn === 'SUM' || expression.fn === 'AVG') {
+    const numbers = values.map(toNumber).filter((value): value is number => value !== undefined)
+    if (!numbers.length) return null
+    const total = numbers.reduce((sum, value) => sum + value, 0)
+    return expression.fn === 'SUM' ? total : total / numbers.length
+  }
+  const sorted = [...values].sort(compareScalars)
+  return expression.fn === 'MIN' ? sorted[0] : sorted.at(-1)!
 }
 
-function evaluateBinaryExpression(expression: Extract<Expression, { type: 'binary' }>, row: AliasedRow, group?: Group) {
-  const left = Number(evaluateExpression(expression.left, row, group))
-  const right = Number(evaluateExpression(expression.right, row, group))
-  if (Number.isNaN(left) || Number.isNaN(right)) throw new QueryExecutionError(`Arithmetic expression "${expression.label}" must use numeric values.`)
-  if (expression.operator === '+') return left + right
-  if (expression.operator === '-') return left - right
-  if (expression.operator === '*') return left * right
-  if (right === 0) throw new QueryExecutionError(`Arithmetic expression "${expression.label}" divides by zero.`)
-  return left / right
+function evaluateBinary(expression: Extract<Expression, { type: 'binary' }>, context: Context, scope: Scope): Scalar {
+  const left = evaluateExpression(expression.left, context, scope)
+  const right = evaluateExpression(expression.right, context, scope)
+  if (left === null || right === null) return null
+  const leftNumber = toNumber(left)
+  const rightNumber = toNumber(right)
+  if (leftNumber === undefined || rightNumber === undefined) {
+    throw new QueryExecutionError(`Arithmetic expression "${expression.label}" must use numeric values.`)
+  }
+  if (expression.operator === '+') return leftNumber + rightNumber
+  if (expression.operator === '-') return leftNumber - rightNumber
+  if (expression.operator === '*') return leftNumber * rightNumber
+  // Like SQLite: dividing by zero yields NULL, and integer / integer truncates toward zero.
+  if (rightNumber === 0) return null
+  if (Number.isInteger(leftNumber) && Number.isInteger(rightNumber) && !isRealTyped(expression)) return Math.trunc(leftNumber / rightNumber)
+  return leftNumber / rightNumber
 }
 
-function readColumn(row: AliasedRow, expression: Extract<Expression, { type: 'column' }>) {
+/** True when SQLite would treat the expression as REAL regardless of its value: AVG, a literal like 2.0, or arithmetic over either. */
+function isRealTyped(expression: Expression): boolean {
+  if (expression.type === 'aggregate') return expression.fn === 'AVG'
+  if (expression.type === 'literal') return typeof expression.value === 'number' && expression.label.includes('.')
+  if (expression.type === 'binary') return isRealTyped(expression.left) || isRealTyped(expression.right)
+  return false
+}
+
+type Source = { alias: string; table: Table }
+
+/** Checks every column reference against the source tables before any row is read, so typos fail even when no rows reach a clause. */
+function validateColumns(ast: QueryAST, aliasMap: AliasMap, scope: Scope, sources: Source[]) {
+  const hasColumn = (table: Table, column: string) => table.columns.some((candidate) => candidate.toLowerCase() === column.toLowerCase())
+  const outputNames = new Set(
+    resultHeaders(ast.select, scope)
+      .filter((header): header is string => header !== undefined)
+      .map((header) => header.toLowerCase()),
+  )
+  const check = (expression: Expression | undefined, isOrderBy = false) => {
+    if (!expression) return
+    if (expression.type === 'aggregate') return check(expression.column)
+    if (expression.type === 'binary') {
+      check(expression.left, isOrderBy)
+      check(expression.right, isOrderBy)
+      return
+    }
+    if (expression.type !== 'column') return
+    if (expression.tableAlias) {
+      const source = sources.find((candidate) => candidate.alias.toLowerCase() === expression.tableAlias!.toLowerCase())
+      if (!source) throw new QueryExecutionError(`Unknown table alias "${expression.tableAlias}". Available: ${scope.aliases.join(', ')}.`)
+      if (!hasColumn(source.table, expression.column)) throw new QueryExecutionError(`Unknown column "${expression.tableAlias}.${expression.column}".`)
+      return
+    }
+    if (isOrderBy && outputNames.has(expression.column.toLowerCase())) return
+    if (!sources.some((source) => hasColumn(source.table, expression.column))) throw new QueryExecutionError(`Unknown column "${expression.column}".`)
+  }
+  // SELECT, JOIN and WHERE are evaluated without alias resolution, so they are checked as written.
+  ast.select.forEach((item) => check(item.expression))
+  ast.join?.conditions.forEach((condition) => [condition.left, condition.right].forEach((side) => check(side)))
+  ast.where.forEach((condition) => [condition.left, condition.right].forEach((side) => check(side)))
+  ast.groupBy.forEach((expression) => check(resolveAlias(expression, aliasMap)))
+  ast.having.forEach((condition) => [condition.left, condition.right].forEach((side) => check(resolveAlias(side, aliasMap))))
+  ast.orderBy.forEach((item) => check(resolveAlias(item.expression, aliasMap), true))
+}
+
+function readColumn(row: AliasedRow, expression: Extract<Expression, { type: 'column' }>, scope: Scope): Scalar {
+  const keys = Object.keys(row.values)
+  const wantedColumn = expression.column.toLowerCase()
   if (expression.tableAlias) {
-    const key = `${expression.tableAlias}.${expression.column}`
-    if (!(key in row.values)) throw new QueryExecutionError(`Unknown column "${key}".`)
+    const alias = scope.aliases.find((candidate) => candidate.toLowerCase() === expression.tableAlias!.toLowerCase())
+    if (!alias) throw new QueryExecutionError(`Unknown table alias "${expression.tableAlias}". Available: ${scope.aliases.join(', ')}.`)
+    const wanted = scope.qualified ? `${alias}.${expression.column}`.toLowerCase() : wantedColumn
+    const key = keys.find((candidate) => candidate.toLowerCase() === wanted)
+    if (key === undefined) throw new QueryExecutionError(`Unknown column "${expression.tableAlias}.${expression.column}".`)
     return row.values[key]
   }
-  const matches = Object.keys(row.values).filter((key) => key.endsWith(`.${expression.column}`))
-  if (matches.length === 0) throw new QueryExecutionError(`Unknown column "${expression.column}".`)
+  const matches = keys.filter((key) => bareName(key, scope).toLowerCase() === wantedColumn)
+  if (!matches.length) throw new QueryExecutionError(`Unknown column "${expression.column}".`)
   if (matches.length > 1) throw new QueryExecutionError(`Column "${expression.column}" is ambiguous. Qualify it with a table alias.`)
   return row.values[matches[0]]
 }
 
-function groupRows(rows: AliasedRow[], expressions: Expression[]): Group[] {
+function bareName(key: string, scope: Scope) {
+  return scope.qualified && key.includes('.') ? key.slice(key.indexOf('.') + 1) : key
+}
+
+function groupRows(rows: AliasedRow[], expressions: Expression[], originals: Expression[], scope: Scope): Group[] {
+  if (!expressions.length) {
+    return [{ id: 'group-1', key: 'all rows', rows }]
+  }
   const buckets = new Map<string, AliasedRow[]>()
   for (const row of rows) {
-    const values = expressions.length ? expressions.map((expression) => String(evaluateExpression(expression, row))) : ['all rows']
-    const key = values.join(' | ')
+    const key = expressions
+      .map((expression, index) => {
+        const value = evaluateExpression(expression, { row }, scope)
+        return `${bareLabel(originals[index])} = ${value === null ? 'NULL' : formatScalar(value)}`
+      })
+      .join(', ')
     buckets.set(key, [...(buckets.get(key) ?? []), row])
   }
-  return [...buckets.entries()].map(([key, bucket], index) => ({
-    id: `group-${index + 1}`,
-    key,
-    rows: bucket,
-    values: { Group: key, Rows: bucket.length },
-  }))
+  return [...buckets.entries()].map(([key, bucket], index) => ({ id: `group-${index + 1}`, key, rows: bucket }))
 }
 
-function attachAggregateSummaries(groups: Group[], expressions: Expression[]) {
-  if (!expressions.length) return groups
-  return groups.map((group) => ({
-    ...group,
-    aggregates: expressions.map((expression) => ({
-      label: expression.label,
-      value: evaluateExpression(expression, group.rows[0], group),
-    })),
-  }))
+function bareLabel(expression: Expression) {
+  return expression.type === 'column' ? expression.column : expression.label
 }
 
-function attachConditionEvaluations(groups: Group[], conditions: Condition[]) {
-  return groups.map((group) => ({
-    ...group,
-    conditions: conditions.map((condition) => ({
-      label: condition.label,
-      result: evaluateCondition(condition, group.rows[0], group),
-    })),
-  }))
+function bareRow(group: Group, select: SelectItem[], scope: Scope): AliasedRow | undefined {
+  if (!group.rows.length) return undefined
+  const aggregates = select.flatMap((item) => collectAggregates(item.expression))
+  const unique = aggregates.filter((aggregate, index) => aggregates.findIndex((other) => other.label === aggregate.label) === index)
+  const single = unique.length === 1 ? unique[0] : undefined
+  if (!single || (single.fn !== 'MIN' && single.fn !== 'MAX') || !single.column) return group.rows[0]
+  let best: AliasedRow | undefined
+  let bestValue: Scalar = null
+  for (const row of group.rows) {
+    const value = evaluateExpression(single.column, { row }, scope)
+    if (value === null) continue
+    const better = best === undefined || (single.fn === 'MAX' ? compareScalars(value, bestValue) > 0 : compareScalars(value, bestValue) < 0)
+    if (better) {
+      best = row
+      bestValue = value
+    }
+  }
+  return best ?? group.rows[0]
 }
 
-function collectAggregateExpressions(ast: QueryAST) {
-  const expressions = [
-    ...ast.select.flatMap((item) => collectAggregatesInExpression(item.expression)),
-    ...ast.having.flatMap((condition) => [
-      ...collectAggregatesInExpression(condition.left),
-      ...collectAggregatesInExpression(condition.right),
-    ]),
-    ...ast.orderBy.flatMap((item) => collectAggregatesInExpression(item.expression)),
-  ]
-  const seen = new Set<string>()
-  return expressions.filter((expression) => {
-    if (seen.has(expression.label)) return false
-    seen.add(expression.label)
-    return true
+/** Header per select item; undefined for the wildcard, whose headers come from the row. */
+function resultHeaders(select: SelectItem[], scope: Scope): Array<string | undefined> {
+  const preferred = select.map((item) => {
+    if (item.expression.type === 'wildcard') return undefined
+    if (item.alias) return item.alias
+    if (item.expression.type === 'column') return item.expression.column
+    return item.expression.label
+  })
+  return preferred.map((header, index) => {
+    const item = select[index]
+    if (header === undefined || item.alias || item.expression.type !== 'column') return header
+    const collides = preferred.some((other, otherIndex) => otherIndex !== index && other?.toLowerCase() === header.toLowerCase())
+    return collides && scope.qualified ? item.expression.label : header
   })
 }
 
-function collectAggregatesInExpression(expression: Expression): Extract<Expression, { type: 'aggregate' }>[] {
-  if (expression.type === 'aggregate') return [expression]
-  if (expression.type === 'binary') return [
-    ...collectAggregatesInExpression(expression.left),
-    ...collectAggregatesInExpression(expression.right),
-  ]
+function project(select: SelectItem[], headers: Array<string | undefined>, context: Context, index: number, scope: Scope): AliasedRow {
+  const entries: [string, Scalar][] = []
+  select.forEach((item, itemIndex) => {
+    if (item.expression.type === 'wildcard') {
+      entries.push(...Object.entries(context.row?.values ?? {}))
+      return
+    }
+    entries.push([headers[itemIndex]!, evaluateExpression(item.expression, context, scope)])
+  })
+  return { id: `#${index + 1}`, values: Object.fromEntries(entries), columns: entries.map(([key]) => key) }
+}
+
+function columnKeys(expression: Expression): string[] {
+  if (expression.type === 'column') return [expression.tableAlias ? `${expression.tableAlias}.${expression.column}` : expression.column]
+  if (expression.type === 'aggregate') return expression.column ? columnKeys(expression.column) : []
+  if (expression.type === 'binary') return [...columnKeys(expression.left), ...columnKeys(expression.right)]
   return []
 }
 
-function selectHighlightColumnKeys(select: SelectItem[], rows: AliasedRow[]) {
-  const keys = new Set(Object.keys(rows[0]?.values ?? {}))
-  for (const item of select) {
-    collectColumnKeysInExpression(item.expression).forEach((key) => keys.add(key))
-  }
-  return [...keys]
-}
-
-function collectColumnKeysInExpression(expression: Expression): string[] {
-  if (expression.type === 'column') {
-    return [expression.tableAlias ? `${expression.tableAlias}.${expression.column}` : expression.column]
-  }
-  if (expression.type === 'aggregate') {
-    return expression.column ? collectColumnKeysInExpression(expression.column) : []
-  }
-  if (expression.type === 'binary') {
-    return [
-      ...collectColumnKeysInExpression(expression.left),
-      ...collectColumnKeysInExpression(expression.right),
-    ]
-  }
-  return []
-}
-
-function projectRows(select: SelectItem[], rows: AliasedRow[], groups?: Group[]): AliasedRow[] {
-  if (groups) {
-    return groups.map((group, index) => projectOne(select, group.rows[0], `result-${index + 1}`, group))
-  }
-  return rows.map((row, index) => projectOne(select, row, `result-${index + 1}`))
-}
-
-function projectOne(select: SelectItem[], row: AliasedRow, id: string, group?: Group): AliasedRow {
-  return {
-    id,
-    provenance: row.provenance,
-    values: Object.fromEntries(select.flatMap((item) => projectSelectItem(item, row, group))),
-  }
-}
-
-function hasAggregates(select: SelectItem[]) {
-  return select.some((item) => hasAggregateExpression(item.expression))
-}
-
-function hasAggregateExpression(expression: Expression): boolean {
-  if (expression.type === 'aggregate') return true
-  if (expression.type === 'binary') return hasAggregateExpression(expression.left) || hasAggregateExpression(expression.right)
-  return false
-}
-
-function projectSelectItem(item: SelectItem, row: AliasedRow, group?: Group): [string, Scalar][] {
-  if (item.expression.type === 'wildcard') return wildcardEntries(row)
-  return [[item.alias ?? item.expression.label, evaluateExpression(item.expression, row, group)]]
+function conditionColumnKeys(condition: Condition, aliasMap: AliasMap) {
+  return [...columnKeys(resolveAlias(condition.left, aliasMap)), ...columnKeys(resolveAlias(condition.right, aliasMap))]
 }
 
 type SortableRow = {
   row: AliasedRow
-  context: { row: AliasedRow; group?: Group }
   index: number
   keys: Array<{ label: string; value: Scalar; direction: 'ASC' | 'DESC' }>
 }
 
-function sortRows(rows: AliasedRow[], contexts: Array<{ row: AliasedRow; group?: Group }>, orderBy: OrderItem[]) {
+function sortRows(rows: AliasedRow[], contexts: Context[], orderBy: OrderItem[], aliasMap: AliasMap, scope: Scope): SortableRow[] {
   return rows
     .map((row, index): SortableRow => ({
       row,
-      context: contexts[index],
       index,
-      keys: orderBy.map((order) => ({
-        label: order.expression.label,
-        value: evaluateOrderExpression(order.expression, row, contexts[index]),
-        direction: order.direction,
+      keys: orderBy.map((item) => ({
+        label: item.expression.label,
+        value: evaluateOrderValue(item.expression, row, contexts[index], aliasMap, scope),
+        direction: item.direction,
       })),
     }))
     .sort((left, right) => {
@@ -444,33 +582,37 @@ function sortRows(rows: AliasedRow[], contexts: Array<{ row: AliasedRow; group?:
     })
 }
 
+function evaluateOrderValue(expression: Expression, projected: AliasedRow, context: Context, aliasMap: AliasMap, scope: Scope): Scalar {
+  const columns = projected.columns ?? Object.keys(projected.values)
+  if (expression.type === 'literal' && typeof expression.value === 'number' && Number.isInteger(expression.value)) {
+    const key = columns[expression.value - 1]
+    if (key === undefined) throw new QueryExecutionError(`ORDER BY ${expression.value} is out of range: the result has ${columns.length} column(s).`)
+    return projected.values[key]
+  }
+  if (expression.type === 'column' && !expression.tableAlias) {
+    const key = columns.find((column) => column.toLowerCase() === expression.column.toLowerCase())
+    if (key !== undefined) return projected.values[key]
+  }
+  return evaluateExpression(resolveAlias(expression, aliasMap), context, scope)
+}
+
 function toSortSummary(item: SortableRow, orderBy: OrderItem[], afterIndex: number): SortSummary {
   return {
     rowId: item.row.id,
     beforeRank: item.index + 1,
     afterRank: afterIndex + 1,
     keys: item.keys.map((key, index) => ({
-      label: orderBy[index].label.replace(/\s+(ASC|DESC)$/i, ''),
+      label: sortKeyLabel(orderBy[index].expression, item.row),
       value: key.value,
       direction: key.direction,
     })),
   }
 }
 
-function evaluateOrderExpression(expression: Expression, projectedRow: AliasedRow, context: { row: AliasedRow; group?: Group }) {
-  if (expression.type === 'column' && !expression.tableAlias && expression.column in projectedRow.values) {
-    return projectedRow.values[expression.column]
+/** ORDER BY 2 is labelled with the result column it names, e.g. "salary". */
+function sortKeyLabel(expression: Expression, row: AliasedRow) {
+  if (expression.type === 'literal' && typeof expression.value === 'number' && Number.isInteger(expression.value)) {
+    return row.columns?.[expression.value - 1] ?? expression.label
   }
-  return evaluateExpression(expression, context.row, context.group)
-}
-
-function wildcardEntries(row: AliasedRow): [string, Scalar][] {
-  const entries = Object.entries(row.values)
-  const aliases = new Set(entries.map(([key]) => key.split('.')[0]))
-  if (aliases.size !== 1) return entries
-
-  const unqualified = entries.map(([key, value]) => [key.split('.').slice(1).join('.'), value] as [string, Scalar])
-  const columnNames = unqualified.map(([key]) => key)
-  if (new Set(columnNames).size !== columnNames.length) return entries
-  return unqualified
+  return expression.label
 }

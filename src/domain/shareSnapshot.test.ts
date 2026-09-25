@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { decodeShareSnapshot, encodeShareSnapshot, type ShareSnapshot } from './shareSnapshot'
+import { createShareUrl, decodeShareSnapshot, encodeShareSnapshot, type ShareSnapshot } from './shareSnapshot'
 
 describe('shareSnapshot', () => {
+  it('builds share links on the root path', () => {
+    const url = new URL(createShareUrl({ origin: 'https://example.com', snapshot: { version: 1, tableSql: '', sql: 'SELECT 1' } }))
+
+    expect(url.pathname).toBe('/')
+  })
+
   it('round-trips a shared workspace snapshot', () => {
     const snapshot: ShareSnapshot = {
       version: 1,

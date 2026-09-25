@@ -47,12 +47,6 @@ describe('parseQuery', () => {
     expect(ast.join).toEqual({
       tableName: 'employees',
       alias: 'manager',
-      condition: {
-        left: { type: 'column', tableAlias: 'employee', column: 'manager_id', label: 'employee.manager_id' },
-        operator: '=',
-        right: { type: 'column', tableAlias: 'manager', column: 'id', label: 'manager.id' },
-        label: 'employee.manager_id = manager.id',
-      },
       conditions: [
         {
           left: { type: 'column', tableAlias: 'employee', column: 'manager_id', label: 'employee.manager_id' },
@@ -105,7 +99,7 @@ describe('parseQuery', () => {
   it('parses comma joins in the from clause', () => {
     const ast = parseQuery('SELECT m1.name, m2.name FROM mentors AS m1, mentors as m2 WHERE m1.name > m2.name')
     expect(ast.from).toEqual({ tableName: 'mentors', alias: 'm1' })
-    expect(ast.join).toEqual({ tableName: 'mentors', alias: 'm2', syntax: 'comma' })
+    expect(ast.join).toEqual({ tableName: 'mentors', alias: 'm2', conditions: [], syntax: 'comma' })
     expect(ast.where).toHaveLength(1)
   })
 
@@ -114,7 +108,7 @@ describe('parseQuery', () => {
       'SELECT animals.sound, COUNT(*) FROM friends, animals WHERE friends.animal = animals.animal GROUP BY animals.sound ORDER BY COUNT(*) ASC',
     )
     expect(ast.from).toEqual({ tableName: 'friends', alias: 'friends' })
-    expect(ast.join).toEqual({ tableName: 'animals', alias: 'animals', syntax: 'comma' })
+    expect(ast.join).toEqual({ tableName: 'animals', alias: 'animals', conditions: [], syntax: 'comma' })
     expect(ast.where[0].label).toBe('friends.animal = animals.animal')
     expect(ast.groupBy).toHaveLength(1)
     expect(ast.orderBy[0].label).toBe('COUNT(*) ASC')
@@ -135,5 +129,78 @@ describe('parseQuery', () => {
 
   it('rejects unsupported clauses', () => {
     expect(() => parseQuery('SELECT DISTINCT u.name FROM users AS u')).toThrow(/DISTINCT/)
+  })
+
+  it('records raw clause text for highlighting', () => {
+    const ast = parseQuery("select u.name from users u join listening l on u.id = l.user_id where l.minutes > 20 group by u.name having count(*) > 1 order by u.name limit 3")
+    expect(ast.clauses).toEqual({
+      select: 'select u.name',
+      from: 'from users u',
+      join: 'join listening l on u.id = l.user_id',
+      where: 'where l.minutes > 20',
+      groupBy: 'group by u.name',
+      having: 'having count(*) > 1',
+      orderBy: 'order by u.name',
+      limit: 'limit 3',
+    })
+  })
+
+  it('ignores keywords and AND inside string literals', () => {
+    const ast = parseQuery("SELECT name FROM dogs WHERE fur = 'FROM' AND kind = 'a AND b'")
+    expect(ast.where.map((condition) => condition.right)).toEqual([
+      { type: 'literal', value: 'FROM', label: "'FROM'" },
+      { type: 'literal', value: 'a AND b', label: "'a AND b'" },
+    ])
+  })
+
+  it('unescapes doubled single quotes in literals', () => {
+    const ast = parseQuery("SELECT name FROM dogs WHERE name = 'o''neil'")
+    expect(ast.where[0].right).toEqual({ type: 'literal', value: "o'neil", label: "'o''neil'" })
+  })
+
+  it('enforces clause order', () => {
+    expect(() => parseQuery('SELECT name FROM dogs LIMIT 2 ORDER BY name')).toThrow('ORDER BY must come before LIMIT.')
+    expect(() => parseQuery('SELECT fur FROM dogs GROUP BY fur WHERE height > 3')).toThrow('WHERE must come before GROUP BY.')
+    expect(() => parseQuery('SELECT name FROM dogs WHERE a = 1 WHERE b = 2')).toThrow('WHERE appears more than once.')
+  })
+
+  it('parses IS NULL and IS NOT NULL', () => {
+    const ast = parseQuery('SELECT name FROM employees WHERE manager_id IS NULL AND name IS NOT NULL')
+    expect(ast.where.map((condition) => condition.operator)).toEqual(['IS', 'IS NOT'])
+    expect(ast.where[0].right).toEqual({ type: 'literal', value: null, label: 'NULL' })
+  })
+
+  it('parses parentheses in arithmetic', () => {
+    const ast = parseQuery('SELECT (height + 1) * 2 AS h FROM dogs')
+    const expression = ast.select[0].expression
+    expect(expression.type).toBe('binary')
+    if (expression.type !== 'binary') return
+    expect(expression.operator).toBe('*')
+    expect(expression.left).toMatchObject({ type: 'binary', operator: '+' })
+  })
+
+  it('rejects a parenthesised wildcard', () => {
+    expect(() => parseQuery('SELECT (*) FROM dogs')).toThrow('Unsupported expression: (*).')
+  })
+
+  it('rejects aggregates in WHERE and nested aggregates with clear messages', () => {
+    expect(() => parseQuery('SELECT name FROM dogs WHERE height > AVG(height)')).toThrow(
+      "AVG(height) can't be used in WHERE because aggregates need groups. Use HAVING.",
+    )
+    expect(() => parseQuery('SELECT MAX(COUNT(*)) FROM dogs')).toThrow("Aggregates can't be nested: MAX(COUNT(*)).")
+  })
+
+  it('names unsupported operators and OFFSET', () => {
+    expect(() => parseQuery("SELECT name FROM dogs WHERE fur IN ('long')")).toThrow('IN is not supported in this visualizer.')
+    expect(() => parseQuery('SELECT name FROM dogs WHERE height BETWEEN 1 AND 2')).toThrow('BETWEEN is not supported in this visualizer.')
+    expect(() => parseQuery("SELECT name FROM dogs WHERE name LIKE 'a%'")).toThrow('LIKE is not supported in this visualizer.')
+    expect(() => parseQuery("SELECT name FROM dogs WHERE NOT fur = 'long'")).toThrow('NOT is not supported in this visualizer.')
+    expect(() => parseQuery('SELECT name FROM dogs LIMIT 2 OFFSET 1')).toThrow('OFFSET is not supported in this visualizer.')
+  })
+
+  it('keeps ORDER BY integer literals so the engine can sort by position', () => {
+    const ast = parseQuery('SELECT name, height FROM dogs ORDER BY 2 DESC')
+    expect(ast.orderBy[0].expression).toEqual({ type: 'literal', value: 2, label: '2' })
+    expect(ast.orderBy[0].direction).toBe('DESC')
   })
 })

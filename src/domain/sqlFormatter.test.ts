@@ -37,4 +37,10 @@ describe('formatSql', () => {
       " WHERE note = 'select from where and order by'",
     ].join('\n'))
   })
+
+  it('leaves keywords and separators inside strings alone', () => {
+    expect(formatSql("select name from dogs where fur = 'FROM;  here' and x = 1")).toBe(
+      "SELECT name\n  FROM dogs\n WHERE fur = 'FROM;  here'\n   AND x = 1",
+    )
+  })
 })
