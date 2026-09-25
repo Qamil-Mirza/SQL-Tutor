@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import { formatScalar } from '../../domain/engine'
 import type { AliasedRow, Highlight, SortSummary } from '../../domain/types'
 import { highlightSets, isSelectedColumn } from './highlightSets'
 
-export const FULL_TABLE_ROWS = 12
-export const PREVIEW_TABLE_ROWS = 8
+// Tables longer than this scroll inside a fixed-height box instead of growing the page.
+export const SCROLL_TABLE_ROWS = 12
 
 export function TableView({
   rows,
@@ -19,18 +18,17 @@ export function TableView({
   showBadges?: boolean
   emptyMessage?: string
 }) {
-  const [showAll, setShowAll] = useState(false)
   if (!rows.length) return <p className="empty">{emptyMessage}</p>
 
   const columns = rows[0].columns ?? [...new Set(rows.flatMap((row) => Object.keys(row.values)))]
   const sets = highlightSets(highlights)
   const summaries = new Map((sortSummaries ?? []).map((summary) => [summary.rowId, summary]))
-  const expandable = rows.length > FULL_TABLE_ROWS
-  const visible = expandable && !showAll ? rows.slice(0, PREVIEW_TABLE_ROWS) : rows
+  const scrollable = rows.length > SCROLL_TABLE_ROWS
 
   return (
     <div className="trace-table">
-      <div className="table-scroll">
+      {scrollable ? <p className="table-caption">{tableCaption(rows, sets)}</p> : null}
+      <div className={scrollable ? 'table-scroll is-scrollable' : 'table-scroll'}>
         <table>
           <thead>
             <tr>
@@ -41,7 +39,7 @@ export function TableView({
             </tr>
           </thead>
           <tbody>
-            {visible.map((row) => {
+            {rows.map((row) => {
               const summary = summaries.get(row.id)
               const offTableKeys = summary?.keys.filter((key) => !columns.some((column) => column.toLowerCase() === key.label.toLowerCase())) ?? []
               return (
@@ -64,13 +62,18 @@ export function TableView({
           </tbody>
         </table>
       </div>
-      {expandable ? (
-        <button className="show-all-link" type="button" onClick={() => setShowAll((value) => !value)}>
-          {showAll ? 'Show fewer rows' : `Show all ${rows.length} rows`}
-        </button>
-      ) : null}
     </div>
   )
+}
+
+function tableCaption(rows: AliasedRow[], sets: ReturnType<typeof highlightSets>) {
+  const count = (set: Set<string>) => rows.filter((row) => set.has(row.id)).length
+  const parts = [`${rows.length} rows`]
+  for (const [label, set] of [['matched', sets.matched], ['removed', sets.removed], ['unmatched', sets.unmatched]] as const) {
+    const n = count(set)
+    if (n) parts.push(`${n} ${label}`)
+  }
+  return parts.join(' · ')
 }
 
 function rowClassName(rowId: string, sets: ReturnType<typeof highlightSets>) {

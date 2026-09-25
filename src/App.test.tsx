@@ -96,14 +96,13 @@ describe('App', () => {
     expect(within(screen.getByRole('region', { name: 'Final result' })).getAllByRole('row')).toHaveLength(3)
   })
 
-  it('shows a show-all link for a large cross join', async () => {
+  it('renders every row of a large cross join', async () => {
     renderApp()
     await setQuery('SELECT * FROM users, listening')
     await userEvent.click(screen.getByRole('button', { name: '2 Cross join' }))
     const after = screen.getByRole('region', { name: 'After' })
-    expect(within(after).getAllByRole('row')).toHaveLength(9)
-    await userEvent.click(within(after).getByRole('button', { name: 'Show all 20 rows' }))
     expect(within(after).getAllByRole('row')).toHaveLength(21)
+    expect(within(after).getByText('20 rows')).toBeInTheDocument()
   })
 
   it('keeps the Tables section collapsed when tables are valid and opens it on error', async () => {

@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { AliasedRow } from '../../domain/types'
 import { TableView } from './TableView'
@@ -9,19 +8,18 @@ function rows(n: number): AliasedRow[] {
 }
 
 describe('TableView', () => {
-  it('renders every row when there are 12 or fewer', () => {
-    render(<TableView rows={rows(12)} />)
+  it('renders small tables without a scroll box or caption', () => {
+    const { container } = render(<TableView rows={rows(12)} />)
     expect(screen.getAllByRole('row')).toHaveLength(13)
-    expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument()
+    expect(container.querySelector('.is-scrollable')).toBeNull()
+    expect(screen.queryByText(/12 rows/)).not.toBeInTheDocument()
   })
 
-  it('shows 8 rows and a show-all link for larger tables', async () => {
-    render(<TableView rows={rows(20)} />)
-    expect(screen.getAllByRole('row')).toHaveLength(9)
-    await userEvent.click(screen.getByRole('button', { name: 'Show all 20 rows' }))
+  it('renders every row of a large table in a scroll box with a count caption', () => {
+    const { container } = render(<TableView rows={rows(20)} highlights={[{ kind: 'removed', rowIds: ['t3', 't17', 't20'] }]} />)
     expect(screen.getAllByRole('row')).toHaveLength(21)
-    await userEvent.click(screen.getByRole('button', { name: 'Show fewer rows' }))
-    expect(screen.getAllByRole('row')).toHaveLength(9)
+    expect(container.querySelector('.table-scroll.is-scrollable')).not.toBeNull()
+    expect(screen.getByText('20 rows · 3 removed')).toBeInTheDocument()
   })
 
   it('uses the columns list for order and highlights rows and columns', () => {

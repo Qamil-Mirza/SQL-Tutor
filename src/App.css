@@ -483,9 +483,33 @@ h3 {
   background: var(--paper);
 }
 
+.table-scroll.is-scrollable {
+  max-height: 30rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-scroll.is-scrollable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.table-scroll.is-scrollable th.selected-column {
+  box-shadow: inset 0 -2px 0 var(--selected);
+}
+
 .trace-table {
   display: grid;
   min-width: 0;
+}
+
+.table-caption {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .table-preview-list {
@@ -834,19 +858,6 @@ th.selected-column {
 
 .step-state { display: grid; gap: 8px; min-width: 0; }
 .step-state h3 { margin: 0; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-
-.show-all-link {
-  justify-self: start;
-  margin-top: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent-dark);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-}
 
 .rank-badge,
 .key-badge {
