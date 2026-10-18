@@ -20,7 +20,7 @@ const clauses = [
 ]
 
 const stageCount = clauses.length
-const autoplayDelayMs = 2800
+const autoplayDelayMs = 1500
 
 function prefersReducedMotion() {
   return typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches
