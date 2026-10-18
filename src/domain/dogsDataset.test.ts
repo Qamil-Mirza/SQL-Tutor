@@ -3,7 +3,7 @@ import { executeQuery } from './engine'
 import { parseQuery, QueryParseError } from './parser'
 import type { AliasedRow, Table } from './types'
 
-// Canonical Berkeley C88C / CS61A SQL teaching dataset (dogs of US presidents).
+// Classic dogs/parents/sizes SQL teaching dataset (dogs of US presidents).
 const dogsTables: Table[] = [
   {
     name: 'dogs',
@@ -50,7 +50,7 @@ function rowsFor(sql: string) {
   return steps.at(-1)!.after as AliasedRow[]
 }
 
-describe('C88C: basic selects and filtering', () => {
+describe('Dogs dataset: basic selects and filtering', () => {
   it('selects every column with a wildcard', () => {
     const rows = rowsFor('SELECT * FROM dogs')
     expect(rows).toHaveLength(8)
@@ -78,7 +78,7 @@ describe('C88C: basic selects and filtering', () => {
   })
 })
 
-describe('C88C: joins', () => {
+describe('Dogs dataset: joins', () => {
   it('lists parents of dogs ordered by child height (classic lab query)', () => {
     const rows = rowsFor('SELECT parent FROM parents, dogs WHERE child = name ORDER BY height DESC')
     expect(rows.map((row) => row.values.parent)).toEqual([
@@ -141,7 +141,7 @@ describe('C88C: joins', () => {
   })
 })
 
-describe('C88C: aggregation', () => {
+describe('Dogs dataset: aggregation', () => {
   it('computes MAX over a table', () => {
     const rows = rowsFor('SELECT MAX(height) FROM dogs')
     expect(rows).toHaveLength(1)
@@ -190,7 +190,7 @@ describe('C88C: aggregation', () => {
   })
 })
 
-describe('C88C: unsupported course patterns fail loudly, not silently', () => {
+describe('Dogs dataset: unsupported query patterns fail loudly, not silently', () => {
   it('rejects SELECT without FROM (literal selects)', () => {
     expect(() => parseQuery("SELECT 'hello', 38")).toThrow(QueryParseError)
   })

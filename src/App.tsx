@@ -118,7 +118,7 @@ function App() {
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">SQL</span>
           <span className="brand-copy">
-            <span className="brand-title">CSM C88C SQL Visualizer</span>
+            <span className="brand-title">SQL Visualizer</span>
             <span className="brand-subtitle">See how SQL builds a result, one clause at a time.</span>
           </span>
         </div>

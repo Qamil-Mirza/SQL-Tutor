@@ -1,8 +1,8 @@
-# CSM C88C SQL Visualizer Handoff
+# SQL Visualizer Handoff
 
 ## Project Goal
 
-Build an educational SQL logical execution visualizer for CSM C88C. The design principle is to explain what SQL does in logical order, not how a database optimizer physically executes a query.
+Build an educational SQL logical execution visualizer. The design principle is to explain what SQL does in logical order, not how a database optimizer physically executes a query.
 
 ## Supported SQL Subset
 
@@ -81,7 +81,7 @@ The engine produces a flat list of steps, one call to `steps.push(...)` per step
 - Green accent (not teal): primary actions, the active timeline step pill, alias badges, and selected columns.
 - The pinned query (`PinnedQuery`) shows the full traced SQL with the active step's clause text highlighted inline.
 - Before/After panels sit side by side (`StepPanel`'s `two-up` layout) whenever a step has a "before"; steps without one (e.g. `FROM`) show only the after/loaded-rows panel, and the last step's after panel is labeled "Final result".
-- Red/faded rows: removed (`WHERE`, `LIMIT`) or unmatched (`JOIN`) rows are shown faded rather than deleted, so students can see what was dropped and why.
+- Red/faded rows: removed (`WHERE`, `LIMIT`) or unmatched (`JOIN`) rows are shown faded rather than deleted, so users can see what was dropped and why.
 - Green selected columns: the column(s) a clause reads from are highlighted in the table header and cells.
 - Purple badges: rank-change badges (`was #N`) after `ORDER BY` and off-table sort/join key badges use the purple secondary color; group card verdicts (`KEEP`/`REJECT`) use green/red.
 - Alias badges: every row shows its stable alias-derived id (e.g. `u1`, `u1+l1`, left source then right) for visible row identity and provenance across joins.
@@ -120,7 +120,7 @@ Table SQL tests (`tableSql.test.ts`) cover `CREATE TABLE`/`INSERT INTO` parsing 
 
 `src/App.test.tsx` covers the single page end to end: the starter query tracing on first load with the pinned query and active clause shown, moving through the timeline with the Back/Next buttons, step pills, and arrow keys (and not doing so from inside an editor or while the share dialog is open), Before/After for `WHERE`, running a new query and resetting to step 1, friendly error rendering, walking a grouped query one group per step with HAVING verdicts, the "Show all" link for a large cross join, the Tables section staying collapsed until a table error opens it, re-tracing the current query with formatted SQL after Apply Tables, persisting and restoring the workspace, opening a share link as a sandbox without touching the saved workspace, a share link whose query fails, and generating and copying a share link.
 
-`src/domain/c88c.test.ts` runs the canonical Berkeley dogs/parents/sizes dataset through the question shapes the course actually asks: wildcard selects, string and numeric filters, `ORDER BY`/`LIMIT`, comma joins with unqualified columns, sibling and grandparent self joins, inequality joins against size ranges, explicit `JOIN ... ON`, aggregates, `GROUP BY`, `HAVING`, and ordering by aggregate aliases. It also pins down that unsupported course patterns (`OR`, `DISTINCT`, subqueries, outer joins, `SELECT` without `FROM`) fail with friendly parse errors rather than silently wrong results.
+`src/domain/dogsDataset.test.ts` runs the classic dogs/parents/sizes teaching dataset through common query shapes: wildcard selects, string and numeric filters, `ORDER BY`/`LIMIT`, comma joins with unqualified columns, sibling and grandparent self joins, inequality joins against size ranges, explicit `JOIN ... ON`, aggregates, `GROUP BY`, `HAVING`, and ordering by aggregate aliases. It also pins down that unsupported course patterns (`OR`, `DISTINCT`, subqueries, outer joins, `SELECT` without `FROM`) fail with friendly parse errors rather than silently wrong results.
 
 Commands:
 

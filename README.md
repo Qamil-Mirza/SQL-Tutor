@@ -1,4 +1,4 @@
-# CSM C88C SQL Visualizer
+# SQL Visualizer
 
 An educational Vite + React + TypeScript app that shows how a small SQL query is evaluated in logical execution order. It is intentionally not a database. It parses a focused SQL subset, runs it against user-defined in-memory tables, and presents each transformation step with before and after tables.
 
