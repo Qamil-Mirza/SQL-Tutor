@@ -1,0 +1,326 @@
+.landing {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  max-width: 1240px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 5vw, 72px);
+  box-sizing: border-box;
+  color: var(--ink);
+}
+
+.landing *,
+.landing *::before,
+.landing *::after {
+  box-sizing: border-box;
+}
+
+.landing-main {
+  display: grid;
+  align-items: center;
+  gap: clamp(48px, 7vw, 104px);
+  padding: clamp(56px, 12vh, 140px) 0 clamp(48px, 8vh, 96px);
+}
+
+@media (min-width: 920px) {
+  .landing-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  }
+}
+
+/* Intro */
+
+.landing-title {
+  margin: 0 0 32px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(3.25rem, 1.5rem + 5.4vw, 6.25rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+}
+
+.landing-title em {
+  color: var(--accent-dark);
+  font-weight: 400;
+}
+
+.landing-lede {
+  max-width: 36ch;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: clamp(1.125rem, 1rem + 0.4vw, 1.3125rem);
+  line-height: 1.55;
+}
+
+.landing-byline {
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.landing-byline a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: text-decoration-color 200ms ease;
+}
+
+.landing-byline a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 44px;
+}
+
+.landing-explore,
+.landing-feedback {
+  display: inline-flex;
+  min-height: 50px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 26px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+.landing-explore {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: var(--on-dark);
+}
+
+.landing-explore:hover {
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+}
+
+.landing-explore-arrow {
+  transition: transform 260ms var(--ease-out);
+}
+
+.landing-explore:hover .landing-explore-arrow {
+  transform: translateX(4px);
+}
+
+.landing-feedback {
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--accent-dark);
+}
+
+.landing-feedback:hover {
+  border-color: var(--accent);
+}
+
+.landing a:focus-visible,
+.landing button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Demo: a real query applied clause by clause, in the order SQL evaluates it. */
+
+.landing-demo {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  margin: 0;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+.demo-legend {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.demo-query {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-clause {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 320ms var(--ease-out), color 320ms var(--ease-out);
+}
+
+.demo-clause code {
+  font-family: var(--font-code);
+  font-size: 0.9375rem;
+  font-variant-ligatures: none;
+}
+
+.demo-clause:hover {
+  color: var(--ink);
+}
+
+.demo-clause[aria-pressed='true'] {
+  background: color-mix(in oklch, var(--accent) 11%, var(--paper));
+  color: var(--ink);
+}
+
+.demo-order {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  transition: background 320ms var(--ease-out), border-color 320ms var(--ease-out), color 320ms var(--ease-out);
+}
+
+.demo-clause[aria-pressed='true'] .demo-order {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: var(--on-dark);
+}
+
+.demo-table-wrap {
+  overflow-x: auto;
+}
+
+.demo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-table th,
+.demo-table td {
+  text-align: left;
+  transition: opacity 520ms var(--ease-out);
+}
+
+.demo-table th {
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.demo-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.demo-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.demo-table .is-out,
+.demo-table tr.is-out td {
+  opacity: 0.2;
+}
+
+.demo-caption {
+  display: flex;
+  min-height: 1.5em;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  color: var(--ink-soft);
+}
+
+.demo-caption-step {
+  color: var(--accent-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Disclaimer */
+
+.landing-disclaimer {
+  padding: 20px 0 28px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.landing-disclaimer p {
+  max-width: 72ch;
+  margin: 0;
+}
+
+.landing-disclaimer strong {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+/* One orchestrated entrance; everything else stays still. */
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.landing-intro > *,
+.landing-demo {
+  animation: landing-rise 720ms var(--ease-out) both;
+}
+
+.landing-intro > :nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.landing-intro > :nth-child(3) {
+  animation-delay: 140ms;
+}
+
+.landing-intro > :nth-child(4) {
+  animation-delay: 210ms;
+}
+
+.landing-demo {
+  animation-delay: 260ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

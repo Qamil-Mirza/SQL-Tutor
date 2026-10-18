@@ -2,7 +2,7 @@
 
 An educational Vite + React + TypeScript app that shows how a small SQL query is evaluated in logical execution order. It is intentionally not a database. It parses a focused SQL subset, runs it against user-defined in-memory tables, and presents each transformation step with before and after tables.
 
-The app is a single page: a query editor at the top, a collapsible Tables section for defining your own data, and a trace below with the full query pinned (its active clause highlighted) and a Step N of M timeline you can move through with Back/Next, the step pills, or the arrow keys.
+The root path (`/`) is a short landing page; the visualizer lives at `/explore`. Share links on the root path skip the landing page and open the visualizer directly. The visualizer is a single page: a query editor at the top, a collapsible Tables section for defining your own data, and a trace below with the full query pinned (its active clause highlighted) and a Step N of M timeline you can move through with Back/Next, the step pills, or the arrow keys.
 
 ## Defining Tables
 

@@ -21,7 +21,7 @@ export function TablesPanel({
   onApply: () => void
 }) {
   const summary = tables.length
-    ? `Tables: ${tables.map((table) => `${table.name} (${table.rows.length})`).join(', ')}`
+    ? `Tables: ${tables.map((table) => table.name).join(', ')}`
     : 'Tables: none defined yet'
   return (
     <details className="tables-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>

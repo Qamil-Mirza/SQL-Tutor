@@ -1,10 +1,39 @@
 :root {
-  font-family: "Open Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Neutrals are tinted toward the green accent so the whole surface reads as one family. */
+  --paper: oklch(99.3% 0.004 150);
+  --paper-soft: oklch(97.6% 0.006 150);
+  --paper-muted: oklch(95.3% 0.011 150);
+  --ink: oklch(24% 0.02 165);
+  --ink-soft: oklch(36% 0.02 165);
+  --muted: oklch(48% 0.02 165);
+  --line: oklch(91.5% 0.012 150);
+  --line-strong: oklch(85.5% 0.016 150);
+  --on-dark: oklch(98.5% 0.006 150);
+  --accent: #43a047;
+  --accent-bright: #66bb6a;
+  --accent-dark: #2e7d32;
+  --accent-deep: #1f5d24;
+  --secondary: #694489;
+  --secondary-soft: #f5f0fa;
+  --danger: #c0392b;
+  --danger-soft: #fdf0ee;
+  --selected: #2e7d32;
+  --selected-soft: #e8f5e9;
+  --code: #1f2933;
+
+  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-ui: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  font-family: var(--font-ui);
   line-height: 1.5;
   font-weight: 400;
-  color: #1f2a37;
-  background: #f6f8f7;
+  color: var(--ink);
+  background: var(--paper-soft);
   font-synthesis: none;
+  font-kerning: normal;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -12,8 +41,18 @@
 
 body {
   margin: 0;
+  background: var(--paper-soft);
 }
 
 #root {
   min-height: 100vh;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
