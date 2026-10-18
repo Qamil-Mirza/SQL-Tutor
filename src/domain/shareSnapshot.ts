@@ -38,6 +38,10 @@ export function createShareUrl({
   return url.toString()
 }
 
+export function hasShareSnapshot(search: string) {
+  return new URLSearchParams(search).has(shareParamName)
+}
+
 export function readShareSnapshot(search: string) {
   const payload = new URLSearchParams(search).get(shareParamName)
   if (!payload) return undefined

@@ -107,9 +107,9 @@ describe('App', () => {
 
   it('keeps the Tables section collapsed when tables are valid and opens it on error', async () => {
     renderApp()
-    const details = screen.getByText(/^Tables: users \(4\)/).closest('details')!
+    const details = screen.getByText(/^Tables: users/).closest('details')!
     expect(details.open).toBe(false)
-    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    await userEvent.click(screen.getByText(/^Tables: users/))
     const editor = screen.getByLabelText('Table SQL')
     await userEvent.clear(editor)
     await userEvent.type(editor, 'CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1);')
@@ -118,32 +118,35 @@ describe('App', () => {
     expect(details.open).toBe(true)
   })
 
-  it('reports an unknown table after tables change and keeps the Tables section open', async () => {
+  it('reports an unknown table only when the query runs after tables change', async () => {
     renderApp()
-    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    await userEvent.click(screen.getByText(/^Tables: users/))
     const editor = screen.getByLabelText('Table SQL')
     await userEvent.clear(editor)
     await userEvent.type(editor, "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
     await userEvent.click(screen.getByRole('button', { name: 'Apply Tables' }))
-    expect(screen.getByText('Tables: pets (1)')).toBeInTheDocument()
+    expect(screen.getByText('Tables: pets')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Unknown table "users". Available tables: pets.')
-    expect(screen.getByText('Tables: pets (1)').closest('details')!.open).toBe(true)
   })
 
-  it('re-traces the current query with the new tables after Apply Tables', async () => {
+  it('applies tables without re-running the query, then traces the new tables on Run', async () => {
     renderApp()
     const editor = screen.getByRole('textbox', { name: 'SQL query' })
     await userEvent.clear(editor)
     await userEvent.type(editor, 'select name from pets')
-    await userEvent.click(screen.getByText(/^Tables: users \(4\)/))
+    await userEvent.click(screen.getByText(/^Tables: users/))
     const tableEditor = screen.getByLabelText('Table SQL')
     await userEvent.clear(tableEditor)
     await userEvent.type(tableEditor, "CREATE TABLE pets (id, name);{enter}INSERT INTO pets VALUES (1, 'Miso');")
     await userEvent.click(screen.getByRole('button', { name: 'Apply Tables' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Tables: pets').closest('details')!.open).toBe(false)
+    expect(screen.getByLabelText('Full SQL query')).toHaveTextContent("SELECT u.name, u.tier FROM users AS u WHERE u.tier = 'pro' LIMIT 2")
+    await userEvent.click(screen.getByRole('button', { name: 'Run Query' }))
     expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM pets')
     expect(stepPosition()).toBe('Step 1 of 2')
-    expect(screen.getByText('Tables: pets (1)').closest('details')!.open).toBe(false)
   })
 
   it('persists the workspace and restores it on reload', async () => {
@@ -170,7 +173,7 @@ describe('App', () => {
     window.localStorage.setItem('c88c-sql-tutor-workspace', JSON.stringify({ tables: [], tableSql: 'CREATE TABLE mine (a);', sql: 'SELECT a FROM mine' }))
     const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');", sql: 'SELECT name FROM pets' } }))
     renderApp(url.search)
-    expect(screen.getByText('Tables: pets (1)')).toBeInTheDocument()
+    expect(screen.getByText('Tables: pets')).toBeInTheDocument()
     expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM pets')
     await setQuery('SELECT id FROM pets')
     expect(JSON.parse(window.localStorage.getItem('c88c-sql-tutor-workspace')!).sql).toBe('SELECT a FROM mine')

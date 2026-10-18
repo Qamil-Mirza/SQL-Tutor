@@ -78,21 +78,10 @@ function App() {
     const formattedTableSql = formatSql(tableSql)
     setTableSql(formattedTableSql)
     try {
-      const nextTables = parseTableSql(formattedTableSql)
-      setTables(nextTables)
+      // Applying tables only updates the data; the query runs when the user presses Run.
+      setTables(parseTableSql(formattedTableSql))
       setTableError(undefined)
-      const formatted = formatSql(sql)
-      const result = run(formatted, nextTables)
-      setError(result.error)
-      if (result.error) {
-        setTablesOpen(true)
-      } else {
-        setSql(formatted)
-        setTracedSql(formatted)
-        setSteps(result.steps)
-        setStepIndex(0)
-        setTablesOpen(false)
-      }
+      setTablesOpen(false)
     } catch (caught) {
       setTableError(caught instanceof Error ? caught.message : 'The table SQL could not be applied.')
       setTablesOpen(true)
@@ -115,16 +104,14 @@ function App() {
   return (
     <main className="app-shell">
       <header className="app-topbar">
-        <div className="brand-lockup">
+        <a className="brand-lockup" href="/">
           <span className="brand-mark" aria-hidden="true">SQL</span>
           <span className="brand-copy">
-            <span className="brand-title">CSM C88C SQL Visualizer</span>
+            <span className="brand-title">SQL Visualizer</span>
             <span className="brand-subtitle">See how SQL builds a result, one clause at a time.</span>
           </span>
-        </div>
+        </a>
       </header>
-
-      <QueryEditor sql={sql} error={error} onSqlChange={setSql} onFormat={() => setSql(formatSql(sql))} onRun={() => handleRun()} onShare={handleShare} />
 
       <TablesPanel
         tables={tables}
@@ -136,6 +123,8 @@ function App() {
         onFormat={() => setTableSql(formatSql(tableSql))}
         onApply={handleApplyTables}
       />
+
+      <QueryEditor sql={sql} error={error} onSqlChange={setSql} onFormat={() => setSql(formatSql(sql))} onRun={() => handleRun()} onShare={handleShare} />
 
       <section className="trace" ref={traceRef} aria-labelledby="trace-heading">
         <h1 id="trace-heading" className="visually-hidden">Trace</h1>
@@ -157,6 +146,8 @@ function App() {
         onClose={() => setShareModal((current) => ({ ...current, isOpen: false, copied: false }))}
         onCopy={handleCopy}
       />
+
+      <footer className="app-disclaimer">Independent project. Not affiliated with UC Berkeley or DATA C88C.</footer>
     </main>
   )
 }

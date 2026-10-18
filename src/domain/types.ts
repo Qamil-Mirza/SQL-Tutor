@@ -53,7 +53,7 @@ export type JoinClause = {
   syntax: 'explicit' | 'comma'
 }
 
-/** Raw clause text as the student wrote it (whitespace-normalised), keyword included. */
+/** Raw clause text as the user wrote it (whitespace-normalised), keyword included. */
 export type QueryClauses = {
   select: string
   from: string
