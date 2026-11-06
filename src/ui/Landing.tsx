@@ -1,8 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react'
+import { feedbackUrl } from '../feedback'
 import './Landing.css'
-
-// Set to a form or mailto URL to show the Feedback button.
-const feedbackUrl: string | undefined = undefined
 
 const columns = ['id', 'name', 'tier', 'region']
 const rows = [
@@ -50,11 +48,9 @@ export function Landing({ explorePath, onExplore }: LandingProps) {
               Explore
               <span className="landing-explore-arrow" aria-hidden="true">→</span>
             </a>
-            {feedbackUrl ? (
-              <a className="landing-feedback" href={feedbackUrl} target="_blank" rel="noreferrer">
-                Feedback
-              </a>
-            ) : null}
+            <a className="landing-feedback" href={feedbackUrl} target="_blank" rel="noreferrer">
+              Feedback
+            </a>
           </div>
         </section>
 

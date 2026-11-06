@@ -36,6 +36,13 @@ describe('App', () => {
     expect(screen.getByLabelText('Full SQL query').querySelector('.active-query-clause')).toHaveTextContent('FROM users AS u')
   })
 
+  it('links to the feedback form in a new tab from the top bar', () => {
+    renderApp()
+    const link = screen.getByRole('link', { name: 'Feedback' })
+    expect(link).toHaveAttribute('href', 'https://forms.gle/X9pd896PG15SD9cv6')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
   it('moves through the timeline with buttons, pills and arrow keys', async () => {
     renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Next →' }))
