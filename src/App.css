@@ -76,7 +76,27 @@
   border-radius: 10px;
 }
 
-.brand-lockup:focus-visible {
+.app-feedback {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 200ms ease;
+}
+
+.app-feedback:hover {
+  border-color: var(--accent);
+}
+
+.brand-lockup:focus-visible,
+.app-feedback:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
@@ -596,14 +616,12 @@
 
 @media (max-width: 640px) {
   .app-topbar {
-    align-items: flex-start;
-    flex-direction: column;
     gap: 10px;
     padding: 12px 14px;
   }
 
   .brand-lockup {
-    width: 100%;
+    flex: 1 1 auto;
     gap: 10px;
   }
 

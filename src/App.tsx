@@ -8,6 +8,7 @@ import { createShareUrl, readShareSnapshot } from './domain/shareSnapshot'
 import { formatSql } from './domain/sqlFormatter'
 import { parseTableSql, serializeTables } from './domain/tableSql'
 import type { ExecutionStep, Table } from './domain/types'
+import { feedbackUrl } from './feedback'
 import { QueryEditor } from './ui/QueryEditor'
 import { ShareModal } from './ui/ShareModal'
 import { TablesPanel } from './ui/TablesPanel'
@@ -110,6 +111,9 @@ function App() {
             <span className="brand-title">SQL Visualizer</span>
             <span className="brand-subtitle">See how SQL builds a result, one clause at a time.</span>
           </span>
+        </a>
+        <a className="app-feedback" href={feedbackUrl} target="_blank" rel="noreferrer">
+          Feedback
         </a>
       </header>
 

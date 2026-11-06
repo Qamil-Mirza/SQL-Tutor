@@ -23,7 +23,7 @@ describe('Root', () => {
     expect(screen.getByRole('link', { name: 'Qamil Mirza' })).toHaveAttribute('href', 'https://qamil-mirza.com')
     expect(screen.getByText(/Not affiliated with UC Berkeley or DATA C88C/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Explore/ })).toHaveAttribute('href', '/explore')
-    expect(screen.queryByRole('link', { name: /Feedback/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Feedback' })).toHaveAttribute('href', 'https://forms.gle/X9pd896PG15SD9cv6')
     expect(screen.queryByRole('textbox', { name: 'SQL query' })).not.toBeInTheDocument()
   })
 
