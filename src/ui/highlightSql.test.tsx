@@ -9,4 +9,10 @@ describe('highlightSql', () => {
     expect(keywords).toEqual(['select', 'from', 'where'])
     expect(container.querySelector('.sql-string')?.textContent).toBe("'from'")
   })
+
+  it('colours LIKE and NOT LIKE', () => {
+    const { container } = render(<pre>{highlightSql("where a not like 'x%' and b like 'y'")}</pre>)
+    const keywords = [...container.querySelectorAll('.sql-keyword')].map((node) => node.textContent)
+    expect(keywords).toEqual(['where', 'not', 'like', 'and', 'like'])
+  })
 })

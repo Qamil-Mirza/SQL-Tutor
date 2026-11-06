@@ -15,8 +15,9 @@ type ClauseName = (typeof clauseOrder)[number]
 type ClauseSpan = { name: ClauseName; start: number; end: number }
 
 const clausePattern = /\b(SELECT|FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b/gi
-const unsupportedPattern = /\b(DISTINCT|UNION|WITH|OVER|OFFSET|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN|IN|BETWEEN|LIKE|NOT|OR)\b/i
+const unsupportedPattern = /\b(DISTINCT|UNION|WITH|OVER|OFFSET|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN|IN|BETWEEN|ESCAPE|NOT|OR)\b/i
 const comparisonPattern = /(>=|<=|<>|!=|=|>|<)/
+const likePattern = /\b(NOT\s+)?LIKE\b/i
 
 export class QueryParseError extends Error {
   constructor(message: string) {
@@ -112,7 +113,7 @@ function normalize(input: string) {
 }
 
 function rejectUnsupported(sql: string) {
-  const masked = maskStrings(sql).replace(/\bIS\s+NOT\s+NULL\b/gi, (text) => ' '.repeat(text.length))
+  const masked = maskStrings(sql).replace(/\b(?:IS\s+NOT\s+NULL|NOT\s+LIKE)\b/gi, (text) => ' '.repeat(text.length))
   const match = masked.match(unsupportedPattern)
   if (!match) return
   const keyword = match[1].toUpperCase()
@@ -160,7 +161,7 @@ function parseCondition(text: string): Condition {
       label: trimmed,
     }
   }
-  const operator = matchOutsideStrings(trimmed, comparisonPattern)
+  const operator = matchOutsideStrings(trimmed, likePattern) ?? matchOutsideStrings(trimmed, comparisonPattern)
   const left = operator ? trimmed.slice(0, operator.index).trim() : ''
   const right = operator ? trimmed.slice(operator.index + operator.text.length).trim() : ''
   if (!operator || !left || !right) {
@@ -168,7 +169,7 @@ function parseCondition(text: string): Condition {
   }
   return {
     left: parseExpression(left),
-    operator: operator.text as ComparisonOperator,
+    operator: operator.text.trim().toUpperCase().replace(/\s+/g, ' ') as ComparisonOperator,
     right: parseExpression(right),
     label: trimmed,
   }

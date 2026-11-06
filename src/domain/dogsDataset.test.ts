@@ -62,6 +62,25 @@ describe('Dogs dataset: basic selects and filtering', () => {
     expect(rows.map((row) => row.values.name)).toEqual(['fillmore', 'herbert'])
   })
 
+  it('filters rows with LIKE patterns', () => {
+    expect(rowsFor("SELECT name FROM dogs WHERE name LIKE '%e%'").map((row) => row.values.name)).toEqual([
+      'delano',
+      'eisenhower',
+      'fillmore',
+      'grover',
+      'herbert',
+    ])
+    expect(rowsFor("SELECT name FROM dogs WHERE name NOT LIKE '%r%' AND fur LIKE 'l___'").map((row) => row.values.name)).toEqual([
+      'clinton',
+      'delano',
+    ])
+  })
+
+  it('joins on a LIKE condition', () => {
+    const rows = rowsFor("SELECT p.parent, d.name FROM parents AS p JOIN dogs AS d ON d.name LIKE p.parent AND d.fur LIKE 'c%'")
+    expect(rows.map((row) => [row.values.parent, row.values.name])).toEqual([['fillmore', 'fillmore'], ['fillmore', 'fillmore'], ['fillmore', 'fillmore']])
+  })
+
   it('filters rows with a numeric comparison', () => {
     const rows = rowsFor('SELECT name, height FROM dogs WHERE height > 40')
     expect(rows.map((row) => row.values.name)).toEqual(['barack', 'clinton', 'delano'])

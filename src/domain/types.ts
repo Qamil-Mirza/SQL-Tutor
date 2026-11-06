@@ -25,7 +25,7 @@ export type Expression =
   | { type: 'binary'; operator: ArithmeticOperator; left: Expression; right: Expression; label: string }
   | { type: 'wildcard'; label: '*' }
 
-export type ComparisonOperator = '=' | '!=' | '<>' | '>' | '<' | '>=' | '<=' | 'IS' | 'IS NOT'
+export type ComparisonOperator = '=' | '!=' | '<>' | '>' | '<' | '>=' | '<=' | 'IS' | 'IS NOT' | 'LIKE' | 'NOT LIKE'
 
 export type Condition = {
   left: Expression
