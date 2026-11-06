@@ -47,7 +47,7 @@ Starter data and starter query ownership live in `src/domain/samples.ts`. Keep s
 
 Table SQL helpers live in `src/domain/tableSql.ts`. They parse and serialize the small table-definition subset: `CREATE TABLE name (columns...)` and `INSERT INTO name VALUES (...)`, matching table names case-insensitively and rejecting duplicate tables or duplicate columns.
 
-Share snapshot helpers live in `src/domain/shareSnapshot.ts`. Share links compress a versioned snapshot of `tableSql`, `sql`, and optional `stepIndex` into the `share` query parameter on the app's root URL (`/`). They intentionally avoid a backend slug store; shared links are immutable because the URL is the source of truth, and shared sessions do not overwrite the viewer's saved local workspace on load.
+Share snapshot helpers live in `src/domain/shareSnapshot.ts`. Share links compress a snapshot of `tableSql`, `sql`, and optional `stepIndex` into the `share` query parameter on the app's root URL (`/`). The current format is `2.` followed by base64url of raw DEFLATE (via `fflate`) of the JSON array `[tableSql, sql, stepIndex?]`, compressed against a preset dictionary built from a frozen copy of the starter tables, the starter query, and common SQL keywords; that is why a link that keeps the starter tables is about 40 characters instead of about 800. Every `2.` link depends on those exact dictionary bytes, so never edit them: change the dictionary by adding a new version prefix. Payloads without a prefix are the original lz-string format (`{ version: 1, ... }`) and still decode, so older links keep working. They intentionally avoid a backend slug store; shared links are immutable because the URL is the source of truth, and shared sessions do not overwrite the viewer's saved local workspace on load.
 
 ## Shared helpers
 
@@ -115,7 +115,7 @@ Table SQL tests (`tableSql.test.ts`) cover `CREATE TABLE`/`INSERT INTO` parsing 
 
 `sqlFormatter.test.ts` covers formatting a `SELECT` query (including uppercasing `NOT LIKE` and `IS NOT NULL`) and table-definition statements into style-guide blocks, and preserving/ignoring keywords and separators inside string literals.
 
-`src/domain/shareSnapshot.test.ts` covers compressed-payload round trips, rejection of malformed share payloads, and that `createShareUrl` builds links on the app's root path (`/`).
+`src/domain/shareSnapshot.test.ts` covers compressed-payload round trips (including non-ASCII text), that links with the starter tables stay short and URL-safe, that original lz-string links still decode, a pinned `2.` payload that fails if the dictionary changes, rejection of malformed share payloads, and that `createShareUrl` builds links on the app's root path (`/`).
 
 `src/ui/trace/TableView.test.tsx` covers rendering every row at 12 or fewer, the 8-row preview plus "Show all"/"Show fewer" toggle above that, column ordering and row/column highlighting, rank badges and off-table sort keys, and the empty-rows message.
 

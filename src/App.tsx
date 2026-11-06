@@ -89,7 +89,7 @@ function App() {
   }
 
   function handleShare() {
-    const shareUrl = createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql, sql } })
+    const shareUrl = createShareUrl({ origin: window.location.origin, snapshot: { tableSql, sql } })
     void window.navigator.clipboard?.writeText(shareUrl)
     setShareModal({ isOpen: true, shareUrl, copied: false })
   }

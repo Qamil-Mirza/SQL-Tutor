@@ -46,7 +46,7 @@ describe('Root', () => {
   })
 
   it('skips the landing page for share links on the root path', () => {
-    const shareUrl = new URL(createShareUrl({ origin: 'https://example.com', snapshot: { version: 1, tableSql: 'CREATE TABLE t (a); INSERT INTO t VALUES (1);', sql: 'SELECT a FROM t' } }))
+    const shareUrl = new URL(createShareUrl({ origin: 'https://example.com', snapshot: { tableSql: 'CREATE TABLE t (a); INSERT INTO t VALUES (1);', sql: 'SELECT a FROM t' } }))
     renderAt(`/${shareUrl.search}`)
     expect((screen.getByRole('textbox', { name: 'SQL query' }) as HTMLTextAreaElement).value).toMatch(/^SELECT a\s+FROM t$/)
   })

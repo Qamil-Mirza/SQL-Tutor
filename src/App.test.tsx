@@ -171,7 +171,7 @@ describe('App', () => {
 
   it('opens a share link as a sandbox without touching the saved workspace', async () => {
     window.localStorage.setItem('c88c-sql-tutor-workspace', JSON.stringify({ tables: [], tableSql: 'CREATE TABLE mine (a);', sql: 'SELECT a FROM mine' }))
-    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');", sql: 'SELECT name FROM pets' } }))
+    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { tableSql: "CREATE TABLE pets (id, name);\nINSERT INTO pets VALUES (1, 'Miso');", sql: 'SELECT name FROM pets' } }))
     renderApp(url.search)
     expect(screen.getByText('Tables: pets')).toBeInTheDocument()
     expect(screen.getByLabelText('Full SQL query')).toHaveTextContent('SELECT name FROM pets')
@@ -180,7 +180,7 @@ describe('App', () => {
   })
 
   it('loads a share link whose query fails and shows the error above an empty trace', () => {
-    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { version: 1, tableSql: 'CREATE TABLE pets (id);\nINSERT INTO pets VALUES (1);', sql: 'SELECT nope FROM pets' } }))
+    const url = new URL(createShareUrl({ origin: window.location.origin, snapshot: { tableSql: 'CREATE TABLE pets (id);\nINSERT INTO pets VALUES (1);', sql: 'SELECT nope FROM pets' } }))
     renderApp(url.search)
     expect(screen.getByRole('alert')).toHaveTextContent('Unknown column "nope".')
     expect(screen.queryByText(/^Step \d+ of \d+$/)).not.toBeInTheDocument()
