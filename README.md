@@ -26,8 +26,9 @@ Users can generate read-only share links from the single page. Share links encod
 - Aggregates can't be used in `WHERE`, explicit `JOIN ... ON`, or `GROUP BY` — `WHERE`/`ON` fail with a friendly error pointing to `HAVING`, and `GROUP BY` fails asking you to group by a column instead
 - Optional `ORDER BY` with `ASC` or `DESC`, by column, by expression, by a SELECT alias, or by column position (`ORDER BY 1`)
 - Optional `LIMIT`
-- `IN`, `BETWEEN`, `LIKE`, `NOT` (outside `IS NOT NULL`), and `OFFSET` are each rejected by name with "`<KEYWORD>` is not supported in this visualizer."; `OR` is rejected the same way but with "OR is not supported in this visualizer. Combine comparisons with AND." instead
+- `IN`, `BETWEEN`, `ESCAPE`, `NOT` (outside `IS NOT NULL` and `NOT LIKE`), and `OFFSET` are each rejected by name with "`<KEYWORD>` is not supported in this visualizer."; `OR` is rejected the same way but with "OR is not supported in this visualizer. Combine comparisons with AND." instead
 - Qualified and unqualified columns, single- or double-quoted string literals, number/null literals, `IS NULL` / `IS NOT NULL`, and comparison operators `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=`
+- `LIKE` / `NOT LIKE` pattern matching in `WHERE`, `JOIN ... ON`, and `HAVING`, following SQLite: `%` matches any run of characters (including none), `_` matches exactly one character, ASCII letters match case-insensitively (`'ap%'` matches `Apple`) while other letters must match exactly, numbers are matched by their text, and a `NULL` on either side never matches (with or without `NOT`). `ESCAPE` is not supported.
 - Numeric comparisons for numeric values and lexicographic comparisons for non-numeric values, comparing by code unit like SQLite's default `BINARY` collation (uppercase sorts before lowercase); a comparison against `NULL` (other than `IS`/`IS NOT`) evaluates to false
 - SELECT aliases can be referenced from `GROUP BY`, `HAVING`, and `ORDER BY`
 - Table names, column names, and aliases are matched case-insensitively

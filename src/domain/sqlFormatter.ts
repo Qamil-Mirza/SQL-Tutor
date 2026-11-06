@@ -1,6 +1,6 @@
 import { maskStrings, replaceOutsideStrings, splitOutsideStrings, splitTopLevel } from './sqlText'
 
-const keywordPattern = /\b(CREATE|TABLE|INSERT|INTO|VALUES|SELECT|FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|AS|AND|ASC|DESC|TRUE|FALSE|NULL)\b/gi
+const keywordPattern = /\b(CREATE|TABLE|INSERT|INTO|VALUES|SELECT|FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|AS|AND|IS|NOT|LIKE|ASC|DESC|TRUE|FALSE|NULL)\b/gi
 const clausePattern = /\b(FROM|JOIN|ON|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b/gi
 const alignedClausePattern = /^(SELECT|FROM|JOIN|ON|WHERE|GROUP BY|HAVING|ORDER BY|LIMIT|AND)\b\s*(.*)$/i
 const clauseIndents: Record<string, string> = {

@@ -330,6 +330,8 @@ function evaluateCondition(condition: Condition, context: Context, scope: Scope)
   if (condition.operator === 'IS NOT') return left !== null
   const right = evaluateExpression(condition.right, context, scope)
   if (left === null || right === null) return false
+  if (condition.operator === 'LIKE') return matchesLike(left, right)
+  if (condition.operator === 'NOT LIKE') return !matchesLike(left, right)
   const comparison = compareScalars(left, right)
   switch (condition.operator) {
     case '=':
@@ -346,6 +348,15 @@ function evaluateCondition(condition: Condition, context: Context, scope: Scope)
     case '<=':
       return comparison <= 0
   }
+}
+
+/** SQLite LIKE: % is any run of characters, _ is one character, and only ASCII letters ignore case. */
+function matchesLike(value: Scalar, pattern: Scalar) {
+  const foldAscii = (text: string) => text.replace(/[A-Z]/g, (char) => char.toLowerCase())
+  const source = [...foldAscii(String(pattern))]
+    .map((char) => (char === '%' ? '.*' : char === '_' ? '.' : char.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')))
+    .join('')
+  return new RegExp(`^${source}$`, 'su').test(foldAscii(String(value)))
 }
 
 function toNumber(value: Scalar): number | undefined {

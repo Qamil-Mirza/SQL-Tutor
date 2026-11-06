@@ -583,6 +583,44 @@ describe('executeQuery', () => {
     expect((rowsFor('SELECT name FROM employees WHERE manager_id IS NOT NULL') as AliasedRow[])).toHaveLength(3)
   })
 
+  it('matches LIKE patterns with SQLite semantics', () => {
+    const tables: Table[] = [
+      {
+        name: 'words',
+        columns: ['word', 'n'],
+        rows: [
+          { word: 'Apple', n: 10 },
+          { word: 'apricot', n: 105 },
+          { word: 'banana', n: 2 },
+          { word: 'a.c', n: null },
+          { word: 'Élan', n: 1 },
+          { word: null, n: 3 },
+        ],
+      },
+    ]
+    const words = (sql: string) => (executeQuery(parseQuery(sql), tables).at(-1)!.after as AliasedRow[]).map((row) => row.values.word)
+
+    // % matches any run of characters (including none); ASCII letters ignore case.
+    expect(words("SELECT word FROM words WHERE word LIKE 'ap%'")).toEqual(['Apple', 'apricot'])
+    expect(words("SELECT word FROM words WHERE word LIKE '%AN%'")).toEqual(['banana', 'Élan'])
+    // _ matches exactly one character; regex characters in the pattern are literal.
+    expect(words("SELECT word FROM words WHERE word LIKE 'a_c'")).toEqual(['a.c'])
+    expect(words("SELECT word FROM words WHERE word LIKE 'a.%'")).toEqual(['a.c'])
+    expect(words("SELECT word FROM words WHERE word LIKE '_____'")).toEqual(['Apple'])
+    expect(words("SELECT word FROM words WHERE word LIKE '____'")).toEqual(['Élan'])
+    // Like SQLite, case folding is ASCII-only.
+    expect(words("SELECT word FROM words WHERE word LIKE 'é%'")).toEqual([])
+    // Numbers are matched by their text; NULL never matches, with or without NOT.
+    expect(words("SELECT word FROM words WHERE n LIKE '10%'")).toEqual(['Apple', 'apricot'])
+    expect(words("SELECT word FROM words WHERE word NOT LIKE 'a%'")).toEqual(['banana', 'Élan'])
+    expect(words("SELECT word FROM words WHERE n NOT LIKE '1%'")).toEqual(['banana', null])
+  })
+
+  it('filters groups with LIKE in HAVING', () => {
+    const rows = rowsFor("SELECT department, COUNT(*) AS n FROM employees GROUP BY department HAVING department LIKE 'D%'")
+    expect(rows.map((row) => row.values)).toEqual([{ department: 'data', n: 2 }])
+  })
+
   it('takes bare columns from the MAX or MIN row like SQLite', () => {
     expect((rowsFor('SELECT name, MAX(salary) FROM employees') as AliasedRow[])[0].values).toEqual({ name: 'Priya', 'MAX(salary)': 150000 })
     expect((rowsFor('SELECT name, MIN(salary) FROM employees') as AliasedRow[])[0].values).toEqual({ name: 'Noor', 'MIN(salary)': 91000 })

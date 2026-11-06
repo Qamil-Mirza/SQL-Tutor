@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { maskStrings } from '../domain/sqlText'
 
-const keywordPattern = /\b(GROUP\s+BY|ORDER\s+BY|SELECT|FROM|WHERE|JOIN|HAVING|LIMIT|AS|ON|AND|IS|NOT|NULL|ASC|DESC)\b/gi
+const keywordPattern = /\b(GROUP\s+BY|ORDER\s+BY|SELECT|FROM|WHERE|JOIN|HAVING|LIMIT|AS|ON|AND|IS|NOT|LIKE|NULL|ASC|DESC)\b/gi
 const stringPattern = /'[^']*'|"[^"]*"/g
 
 export function highlightSql(sql: string): ReactNode[] {

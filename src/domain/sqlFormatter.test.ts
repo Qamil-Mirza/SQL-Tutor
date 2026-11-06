@@ -18,6 +18,15 @@ describe('formatSql', () => {
     ].join('\n'))
   })
 
+  it('uppercases LIKE, NOT LIKE, and IS NOT NULL without touching the pattern', () => {
+    expect(formatSql("select name from dogs where name not like 'like%' and fur is not null")).toBe([
+      'SELECT name',
+      '  FROM dogs',
+      " WHERE name NOT LIKE 'like%'",
+      '   AND fur IS NOT NULL',
+    ].join('\n'))
+  })
+
   it('formats table creation and insert statements using style-guide blocks', () => {
     expect(formatSql("create table pets (id, name); insert into pets values (1, 'Miso'), (2, 'Nori');")).toBe([
       'CREATE TABLE pets (',

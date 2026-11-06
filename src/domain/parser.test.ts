@@ -190,10 +190,25 @@ describe('parseQuery', () => {
     expect(() => parseQuery('SELECT MAX(COUNT(*)) FROM dogs')).toThrow("Aggregates can't be nested: MAX(COUNT(*)).")
   })
 
+  it('parses LIKE and NOT LIKE', () => {
+    const ast = parseQuery("SELECT name FROM dogs WHERE name LIKE 'a%' AND fur NOT LIKE '%url_' AND name LIKE 'x = y'")
+    expect(ast.where.map((condition) => condition.operator)).toEqual(['LIKE', 'NOT LIKE', 'LIKE'])
+    expect(ast.where[0].left).toEqual({ type: 'column', column: 'name', label: 'name' })
+    expect(ast.where[1].right).toEqual({ type: 'literal', value: '%url_', label: "'%url_'" })
+    expect(ast.where[1].label).toBe("fur NOT LIKE '%url_'")
+    expect(ast.where[2].right).toEqual({ type: 'literal', value: 'x = y', label: "'x = y'" })
+    expect(parseQuery("SELECT name FROM dogs WHERE unlike_name LIKE'a%'").where[0].left).toEqual({ type: 'column', column: 'unlike_name', label: 'unlike_name' })
+  })
+
+  it('rejects incomplete LIKE conditions and aggregates in LIKE outside HAVING', () => {
+    expect(() => parseQuery('SELECT name FROM dogs WHERE name LIKE')).toThrow('Unsupported condition')
+    expect(() => parseQuery("SELECT name FROM dogs WHERE MAX(name) LIKE 'a%'")).toThrow("MAX(name) can't be used in WHERE")
+  })
+
   it('names unsupported operators and OFFSET', () => {
     expect(() => parseQuery("SELECT name FROM dogs WHERE fur IN ('long')")).toThrow('IN is not supported in this visualizer.')
     expect(() => parseQuery('SELECT name FROM dogs WHERE height BETWEEN 1 AND 2')).toThrow('BETWEEN is not supported in this visualizer.')
-    expect(() => parseQuery("SELECT name FROM dogs WHERE name LIKE 'a%'")).toThrow('LIKE is not supported in this visualizer.')
+    expect(() => parseQuery("SELECT name FROM dogs WHERE name LIKE 'a!%' ESCAPE '!'")).toThrow('ESCAPE is not supported in this visualizer.')
     expect(() => parseQuery("SELECT name FROM dogs WHERE NOT fur = 'long'")).toThrow('NOT is not supported in this visualizer.')
     expect(() => parseQuery('SELECT name FROM dogs LIMIT 2 OFFSET 1')).toThrow('OFFSET is not supported in this visualizer.')
   })
