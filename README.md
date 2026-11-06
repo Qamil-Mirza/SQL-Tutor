@@ -12,7 +12,7 @@ The app starts with starter data and one starter query so the visualizer is usef
 
 ## Sharing Workspaces
 
-Users can generate read-only share links from the single page. Share links encode a compressed snapshot of the table SQL and query in the URL, so no server-side database, slug cleanup, or expiration job is required. Opening a shared link loads that snapshot as a sandbox copy: viewers can edit and experiment locally, but reopening the original link restores the creator's original table and query state.
+Users can generate read-only share links from the single page. Share links encode a compressed snapshot of the table SQL and query in the URL, so no server-side database, slug cleanup, or expiration job is required. The compressor is primed with the starter tables and common SQL, so a link that keeps the starter tables is only a few dozen characters long. Opening a shared link loads that snapshot as a sandbox copy: viewers can edit and experiment locally, but reopening the original link restores the creator's original table and query state.
 
 ## Supported SQL
 
